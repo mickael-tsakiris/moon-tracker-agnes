@@ -211,6 +211,30 @@ function calculateMoon() {
   try { setPast = Astronomy.SearchRiseSet('Moon', observer, -1, startOfDay, 1); } catch (_) {}
   try { nextFull = Astronomy.SearchMoonPhase(180, now, 30); } catch (_) {}
 
+  // Calculate terminator tilt: angle of bright limb on observer's sky
+  // Sun position in observer's sky
+  const sunEq = Astronomy.Equator('Sun', now, observer, true, true);
+  const sunHor = Astronomy.Horizon(now, observer, sunEq.ra, sunEq.dec, 'normal');
+
+  // Position angle of sun relative to moon on the sky (from "up"/zenith direction)
+  const moonAltRad = hor.altitude * Math.PI / 180;
+  const moonAzRad = hor.azimuth * Math.PI / 180;
+  const sunAltRad = sunHor.altitude * Math.PI / 180;
+  const sunAzRad = sunHor.azimuth * Math.PI / 180;
+  const dAz = sunAzRad - moonAzRad;
+
+  // Position angle of the bright limb measured from "up" on the moon disk
+  // "Up" = toward zenith when looking at the moon
+  const brightLimbAngle = Math.atan2(
+    Math.cos(sunAltRad) * Math.sin(dAz),
+    Math.sin(sunAltRad) * Math.cos(moonAltRad) -
+    Math.cos(sunAltRad) * Math.sin(moonAltRad) * Math.cos(dAz)
+  );
+
+  // The terminator is perpendicular to the bright limb direction
+  // Rotation to apply to the phase rendering (in radians)
+  const terminatorTilt = brightLimbAngle;
+
   state.moonData = {
     azimuth: hor.azimuth,
     altitude: hor.altitude,
@@ -218,6 +242,7 @@ function calculateMoon() {
     phaseAngle,
     phase: phaseAngle / 360,
     fraction: illum.phase_fraction,
+    terminatorTilt,
     rise: rise?.date || null,
     set: set?.date || null,
     risePast: risePast?.date || null,
@@ -704,13 +729,14 @@ function renderMoonPhase() {
   ctx.scale(dpr, dpr);
 
   const cx = size / 2, cy = size / 2, r = 90;
-  const { phaseAngle } = state.moonData;
+  const { phaseAngle, terminatorTilt } = state.moonData;
   const frac = state.moonData.fraction;
+  const tilt = terminatorTilt || 0; // rotation angle in radians
   ctx.clearRect(0, 0, size, size);
 
   const isWaxing = phaseAngle < 180;
 
-  // --- Outer glow (soft halo around moon) ---
+  // --- Outer glow (soft halo) ---
   const glow = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.6);
   glow.addColorStop(0, `rgba(200,210,230,${0.06 * frac})`);
   glow.addColorStop(0.5, `rgba(180,190,210,${0.025 * frac})`);
@@ -718,97 +744,98 @@ function renderMoonPhase() {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, size, size);
 
-  // --- Dark body base (always visible, represents unlit side) ---
+  // --- Moon disc clip ---
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
 
-  const darkBg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-  darkBg.addColorStop(0, '#1a1a2a');
-  darkBg.addColorStop(0.7, '#121220');
-  darkBg.addColorStop(1, '#0a0a16');
-  ctx.fillStyle = darkBg;
-  ctx.fillRect(0, 0, size, size);
-
-  // Earthshine — very subtle bluish glow on dark side
-  const esX = cx + (isWaxing ? -1 : 1) * r * 0.3;
-  const es = ctx.createRadialGradient(esX, cy, 0, esX, cy, r * 0.85);
-  es.addColorStop(0, 'rgba(55,65,95,0.07)');
-  es.addColorStop(0.5, 'rgba(45,50,75,0.03)');
-  es.addColorStop(1, 'rgba(40,45,70,0)');
-  ctx.fillStyle = es;
-  ctx.fillRect(0, 0, size, size);
-
-  if (frac < 0.003) { ctx.restore(); return; }
-
-  // --- Draw the LIT portion using real photo or procedural fallback ---
-  // Build the lit area path
-  const tw = r * Math.abs(2 * frac - 1);
-
-  ctx.save();
-  ctx.beginPath();
-  if (isWaxing) {
-    // Waxing: RIGHT side is lit
-    // Right semicircle: from top (-PI/2) to bottom (PI/2) clockwise
-    ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false);
-    // Terminator: from bottom back to top
-    // Crescent (frac<0.5): ellipse curves RIGHT (anticlockwise=true) → thin crescent
-    // Gibbous (frac>0.5): ellipse curves LEFT (anticlockwise=false) → fat gibbous
-    ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, frac < 0.5);
-  } else {
-    // Waning: LEFT side is lit
-    // Left semicircle: from bottom (PI/2) to top (-PI/2) clockwise
-    ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, false);
-    // Terminator: from top back to bottom
-    ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
-  }
-  ctx.closePath();
-  ctx.clip();
-
-  // Draw the moon image/texture inside the lit clip
+  // --- Full moon photo first (entire disc) ---
   if (_moonImgLoaded && _moonImg) {
-    // Draw NASA photo, centered and scaled to fill the moon circle
     const imgSize = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
     const sx = (_moonImg.naturalWidth - imgSize) / 2;
     const sy = (_moonImg.naturalHeight - imgSize) / 2;
     ctx.drawImage(_moonImg, sx, sy, imgSize, imgSize, cx - r, cy - r, r * 2, r * 2);
-
-    // Limb darkening on top of photo
-    const limb = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r);
-    limb.addColorStop(0, 'rgba(0,0,0,0)');
-    limb.addColorStop(0.65, 'rgba(0,0,0,0)');
-    limb.addColorStop(0.85, 'rgba(0,0,0,0.12)');
-    limb.addColorStop(0.95, 'rgba(0,0,0,0.3)');
-    limb.addColorStop(1, 'rgba(0,0,0,0.5)');
-    ctx.fillStyle = limb;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   } else {
-    // Fallback: simple grey gradient if photo not loaded
-    const fallback = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    fallback.addColorStop(0, '#c8c8c4');
-    fallback.addColorStop(0.5, '#b0b0ac');
-    fallback.addColorStop(1, '#888884');
-    ctx.fillStyle = fallback;
+    const fb = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    fb.addColorStop(0, '#c8c8c4');
+    fb.addColorStop(0.5, '#b0b0ac');
+    fb.addColorStop(1, '#888884');
+    ctx.fillStyle = fb;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   }
-  ctx.restore(); // pop lit clip
 
-  // --- Soft terminator penumbra ---
-  const penW = r * 0.06;
-  const termX = isWaxing
-    ? cx - tw * (frac < 0.5 ? 1 : -1)
-    : cx + tw * (frac < 0.5 ? 1 : -1);
-  const penGrad = ctx.createLinearGradient(termX - penW, cy, termX + penW, cy);
-  penGrad.addColorStop(0, 'rgba(10,10,20,0.4)');
-  penGrad.addColorStop(0.5, 'rgba(10,10,20,0.15)');
-  penGrad.addColorStop(1, 'rgba(10,10,20,0)');
-  ctx.fillStyle = penGrad;
-  ctx.fillRect(termX - penW * 2, cy - r, penW * 4, r * 2);
+  // --- Limb darkening on full photo ---
+  const limb = ctx.createRadialGradient(cx, cy, r * 0.35, cx, cy, r);
+  limb.addColorStop(0, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.65, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.82, 'rgba(0,0,0,0.08)');
+  limb.addColorStop(0.93, 'rgba(0,0,0,0.22)');
+  limb.addColorStop(1, 'rgba(0,0,0,0.4)');
+  ctx.fillStyle = limb;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+  // --- Phase shadow (dark side) with TILT ---
+  if (frac < 0.995 && frac > 0.003) {
+    const tw = r * Math.abs(2 * frac - 1);
+
+    // Rotate around center for terminator tilt
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.translate(-cx, -cy);
+
+    // Build the SHADOW path (dark area)
+    ctx.beginPath();
+    if (isWaxing) {
+      // Waxing: LEFT side is dark
+      // Left semicircle (dark limb)
+      ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, true);
+      // Terminator back to close the shadow
+      ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, frac > 0.5);
+    } else {
+      // Waning: RIGHT side is dark
+      ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, true);
+      ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+    }
+    ctx.closePath();
+
+    // Shadow: graduated, not flat — photo slightly visible through (earthshine)
+    const shadowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    shadowGrad.addColorStop(0, 'rgba(8,8,18,0.88)');
+    shadowGrad.addColorStop(0.5, 'rgba(6,6,14,0.91)');
+    shadowGrad.addColorStop(0.85, 'rgba(4,4,10,0.94)');
+    shadowGrad.addColorStop(1, 'rgba(2,2,6,0.96)');
+    ctx.fillStyle = shadowGrad;
+    ctx.fill();
+
+    // Soft terminator edge — penumbra gradient along the boundary
+    const penW = r * 0.05;
+    const termCenter = isWaxing ? cx + tw : cx - tw;
+    const penDir = isWaxing ? 1 : -1;
+    const pg = ctx.createLinearGradient(
+      termCenter - penW * penDir, cy,
+      termCenter + penW * 2 * penDir, cy
+    );
+    pg.addColorStop(0, 'rgba(6,6,14,0.6)');
+    pg.addColorStop(0.4, 'rgba(6,6,14,0.25)');
+    pg.addColorStop(1, 'rgba(6,6,14,0)');
+    ctx.fillStyle = pg;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+    ctx.restore(); // pop tilt rotation
+  } else if (frac <= 0.003) {
+    // New moon — full shadow
+    const nm = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    nm.addColorStop(0, 'rgba(8,8,18,0.92)');
+    nm.addColorStop(1, 'rgba(2,2,6,0.97)');
+    ctx.fillStyle = nm;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  }
 
   ctx.restore(); // pop moon disc clip
 
-  // Subtle rim highlight
+  // Subtle outer rim
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = `rgba(220,225,235,${0.04 * Math.min(1, frac * 3)})`;
+  ctx.strokeStyle = `rgba(200,210,225,${0.03 * Math.min(1, frac * 3)})`;
   ctx.lineWidth = 0.5; ctx.stroke();
 }
 
