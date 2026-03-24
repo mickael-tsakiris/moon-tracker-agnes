@@ -736,10 +736,15 @@ function renderMoonPhase() {
 
   const isWaxing = phaseAngle < 180;
 
-  // --- Outer glow (soft halo) ---
-  const glow = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.6);
-  glow.addColorStop(0, `rgba(200,210,230,${0.06 * frac})`);
-  glow.addColorStop(0.5, `rgba(180,190,210,${0.025 * frac})`);
+  // --- Outer glow — ONLY on the lit side ---
+  const glowTilt = tilt || 0;
+  // Offset glow center toward the lit limb
+  const litDirX = isWaxing ? 1 : -1;
+  const glowCx = cx + Math.cos(glowTilt) * litDirX * r * 0.4;
+  const glowCy = cy + Math.sin(glowTilt) * litDirX * r * 0.4;
+  const glow = ctx.createRadialGradient(glowCx, glowCy, r * 0.5, glowCx, glowCy, r * 1.5);
+  glow.addColorStop(0, `rgba(200,210,230,${0.05 * frac})`);
+  glow.addColorStop(0.5, `rgba(180,190,210,${0.02 * frac})`);
   glow.addColorStop(1, 'rgba(180,190,210,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, size, size);
@@ -822,10 +827,20 @@ function renderMoonPhase() {
 
   ctx.restore(); // pop moon disc clip
 
-  // Subtle outer rim
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = `rgba(200,210,225,${0.03 * Math.min(1, frac * 3)})`;
-  ctx.lineWidth = 0.5; ctx.stroke();
+  // Subtle rim highlight — only on lit limb
+  if (frac > 0.01) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    const rimStart = isWaxing ? -Math.PI / 2 : Math.PI / 2;
+    const rimEnd = isWaxing ? Math.PI / 2 : -Math.PI / 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, rimStart, rimEnd, false);
+    ctx.strokeStyle = `rgba(220,225,240,${0.05 * Math.min(1, frac * 3)})`;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function _buildMoonTexture_REMOVED() { /* replaced by NASA photo */ }
