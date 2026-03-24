@@ -43,21 +43,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function startApp() {
   try {
-    // Step 1: Get position (fast fallback if blocked)
+    // Step 1: Get REAL position — no silent fallback
     let usingFallback = false;
     try {
       const pos = await getLocation();
       state.lat = pos.coords.latitude;
       state.lng = pos.coords.longitude;
-    } catch (_) {
-      state.lat = 48.8835;
-      state.lng = 2.3219;
-      usingFallback = true;
+    } catch (geoErr) {
+      // Show a clear, blocking message — user MUST allow geolocation
+      const retry = await showGeoPermissionRequest(geoErr.message);
+      if (retry) {
+        // User tapped retry — try again
+        try {
+          const pos2 = await getLocation();
+          state.lat = pos2.coords.latitude;
+          state.lng = pos2.coords.longitude;
+        } catch (_) {
+          // Second attempt failed — use fallback but WARN clearly
+          state.lat = 48.8566;
+          state.lng = 2.3522;
+          usingFallback = true;
+        }
+      } else {
+        state.lat = 48.8566;
+        state.lng = 2.3522;
+        usingFallback = true;
+      }
     }
 
     // Step 2: Calculate moon INSTANTLY (offline, no network) and show UI
     calculateMoon();
-    if (usingFallback) state.locationName = 'Paris 17e (position approximative)';
+    if (usingFallback) {
+      state.locationName = 'Paris (position approximative)';
+      // Show persistent warning banner
+      const banner = document.createElement('div');
+      banner.id = 'geo-warning';
+      banner.style.cssText = `
+        position:fixed;top:0;left:0;right:0;z-index:999;
+        background:rgba(180,80,40,0.9);color:#fff;text-align:center;
+        padding:0.6rem 1rem;font-size:0.8rem;backdrop-filter:blur(8px);
+      `;
+      banner.textContent = 'Position approximative — autorise la géolocalisation pour des résultats précis';
+      banner.onclick = () => { banner.remove(); startApp(); };
+      document.body.appendChild(banner);
+    }
     renderAll();
     showScreen('app');
     setupCompassButton();
@@ -99,6 +128,49 @@ async function refresh() {
 // ============================
 // GEOLOCATION
 // ============================
+function showGeoPermissionRequest(message) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.id = 'geo-overlay';
+    overlay.innerHTML = `
+      <div style="
+        position:fixed;inset:0;z-index:9999;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        background:rgba(10,10,15,0.95);padding:2rem;text-align:center;
+      ">
+        <div style="font-size:3rem;margin-bottom:1.5rem;">&#x1F315;</div>
+        <h2 style="color:#EDEDED;font-size:1.3rem;margin-bottom:1rem;font-weight:500;">
+          J'ai besoin de ta position
+        </h2>
+        <p style="color:#A1A1A1;font-size:0.95rem;line-height:1.6;max-width:300px;margin-bottom:0.5rem;">
+          Pour trouver la Lune autour de toi, autorise la géolocalisation dans les réglages de ton navigateur.
+        </p>
+        <p style="color:#6B6B6B;font-size:0.8rem;line-height:1.5;max-width:300px;margin-bottom:2rem;">
+          Sur iPhone : Réglages > Safari > Position > Autoriser.<br>
+          Puis reviens ici et appuie sur Réessayer.
+        </p>
+        <button id="geo-retry" style="
+          background:rgba(255,255,255,0.1);color:#EDEDED;border:1px solid rgba(255,255,255,0.15);
+          padding:0.8rem 2.5rem;border-radius:12px;font-size:1rem;cursor:pointer;margin-bottom:0.8rem;
+        ">Réessayer</button>
+        <button id="geo-skip" style="
+          background:none;color:#6B6B6B;border:none;padding:0.5rem;font-size:0.85rem;cursor:pointer;
+        ">Continuer sans (position approximative)</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('geo-retry').onclick = () => {
+      overlay.remove();
+      resolve(true);
+    };
+    document.getElementById('geo-skip').onclick = () => {
+      overlay.remove();
+      resolve(false);
+    };
+  });
+}
+
 function getLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
