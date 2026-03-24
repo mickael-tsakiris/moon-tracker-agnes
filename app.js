@@ -640,22 +640,33 @@ function renderMoonPhase() {
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1; ctx.stroke();
 
-  if (phase < 0.02 || phase > 0.98) return;
-  if (phase > 0.48 && phase < 0.52) {
+  // Use actual illumination fraction (0→1) instead of phaseAngle for accurate rendering
+  const frac = state.moonData.fraction; // 0 = new moon, 1 = full moon
+
+  if (frac < 0.01) return; // New moon — all dark
+  if (frac > 0.99) {
+    // Full moon — all lit
     const lg = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, 0, cx, cy, r);
     lg.addColorStop(0, '#fffdf5'); lg.addColorStop(0.6, '#f5f0e8'); lg.addColorStop(1, '#ddd5c8');
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = lg; ctx.fill();
     return;
   }
 
-  const tw = r * Math.abs(Math.cos(phaseAngle * Math.PI / 180));
+  // Terminator width: convert fraction to ellipse width
+  // fraction=0 → tw=r (thin crescent), fraction=0.5 → tw=0 (quarter), fraction=1 → tw=r (full)
+  const tw = r * Math.abs(2 * frac - 1);
+  const isWaxing = phase < 0.5;
+  const isGibbous = frac > 0.5;
+
   ctx.beginPath();
-  if (phase < 0.5) {
-    ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false);
-    ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, phase > 0.25);
+  if (isWaxing) {
+    // Waxing: lit side on the RIGHT (as seen from northern hemisphere)
+    ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false); // right semicircle (always lit)
+    ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, isGibbous); // terminator curves left
   } else {
-    ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, false);
-    ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, phase < 0.75);
+    // Waning: lit side on the LEFT
+    ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, false); // left semicircle (always lit)
+    ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, isGibbous); // terminator curves right
   }
   ctx.closePath();
   const lg = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.2, 0, cx, cy, r);
