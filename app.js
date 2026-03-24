@@ -712,38 +712,99 @@ function renderMoonPhase() {
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1; ctx.stroke();
 
-  // Use actual illumination fraction (0→1) instead of phaseAngle for accurate rendering
-  const frac = state.moonData.fraction; // 0 = new moon, 1 = full moon
+  // Use phaseAngle (0-360°) from MoonPhase() for accurate visual rendering
+  // phaseAngle: 0=new, 90=first quarter, 180=full, 270=last quarter
+  const pa = phaseAngle; // degrees, 0-360
+  const frac = state.moonData.fraction;
 
-  if (frac < 0.01) return; // New moon — all dark
-  if (frac > 0.99) {
-    // Full moon — all lit
-    const lg = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, 0, cx, cy, r);
-    lg.addColorStop(0, '#fffdf5'); lg.addColorStop(0.6, '#f5f0e8'); lg.addColorStop(1, '#ddd5c8');
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = lg; ctx.fill();
+  if (frac < 0.005) return; // New moon — all dark
+
+  // Lit side gradient
+  const litGrad = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, 0, cx, cy, r);
+  litGrad.addColorStop(0, '#fffdf5');
+  litGrad.addColorStop(0.5, '#f5f0e8');
+  litGrad.addColorStop(1, '#ddd5c8');
+
+  if (frac > 0.995) {
+    // Full moon
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = litGrad; ctx.fill();
     return;
   }
 
-  // Terminator width: convert fraction to ellipse width
-  // fraction=0 → tw=r (thin crescent), fraction=0.5 → tw=0 (quarter), fraction=1 → tw=r (full)
-  const tw = r * Math.abs(2 * frac - 1);
-  const isWaxing = phase < 0.5;
-  const isGibbous = frac > 0.5;
-
+  // Draw lit portion using pixel-by-pixel for accuracy
+  // This avoids the arc/ellipse bugs entirely
+  ctx.save();
   ctx.beginPath();
-  if (isWaxing) {
-    // Waxing: lit side on the RIGHT (as seen from northern hemisphere)
-    ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false); // right semicircle (always lit)
-    ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, isGibbous); // terminator curves left
-  } else {
-    // Waning: lit side on the LEFT
-    ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, false); // left semicircle (always lit)
-    ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, isGibbous); // terminator curves right
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Create offscreen computation: for each column, determine if lit
+  const imgData = ctx.createImageData(size * dpr, size * dpr);
+
+  // Pre-compute lit color (approximate the gradient as warm white)
+  const litR = 245, litG = 240, litB = 232;
+  const darkR = 18, darkG = 18, darkB = 42;
+
+  for (let py = 0; py < size * dpr; py++) {
+    for (let px = 0; px < size * dpr; px++) {
+      const x = px / dpr - cx;
+      const y = py / dpr - cy;
+      const dist = Math.sqrt(x * x + y * y);
+      if (dist > r) continue;
+
+      // Normalized position on the moon disk (-1 to 1)
+      const nx = x / r;
+      const ny = y / r;
+
+      // Longitude on the sphere: asin(nx / cos(asin(ny)))
+      // Simplified: the terminator is at a specific longitude
+      // Phase angle in radians for terminator position
+      const terminatorLon = (pa / 180 - 1) * Math.PI; // -PI to +PI
+
+      // Longitude of this point on the sphere
+      const sinLat = ny;
+      const cosLat = Math.sqrt(Math.max(0, 1 - sinLat * sinLat));
+      const pointLon = cosLat > 0.001 ? Math.asin(Math.max(-1, Math.min(1, nx / cosLat))) : 0;
+
+      // Point is lit if its longitude is on the sun-facing side
+      // For waxing (pa 0-180): lit when pointLon > terminatorLon
+      // For waning (pa 180-360): lit when pointLon < terminatorLon mapped
+      let isLit;
+      if (pa <= 180) {
+        // Waxing: sun comes from the right (positive lon = west = right in northern hemisphere view)
+        isLit = pointLon > terminatorLon;
+      } else {
+        // Waning: sun from the left
+        const termWane = (2 - pa / 180) * Math.PI - Math.PI;
+        isLit = pointLon < termWane;
+      }
+
+      const idx = (py * size * dpr + px) * 4;
+      if (isLit) {
+        // Lit with gradient effect (brighter toward upper-left)
+        const gradFactor = 1 - dist / r * 0.3 + (-nx * 0.1 - ny * 0.1);
+        const f = Math.max(0.6, Math.min(1, gradFactor));
+        imgData.data[idx] = Math.round(litR * f);
+        imgData.data[idx + 1] = Math.round(litG * f);
+        imgData.data[idx + 2] = Math.round(litB * f);
+        imgData.data[idx + 3] = 255;
+      } else {
+        // Dark side — subtle visibility
+        imgData.data[idx] = darkR;
+        imgData.data[idx + 1] = darkG;
+        imgData.data[idx + 2] = darkB;
+        imgData.data[idx + 3] = 255;
+      }
+    }
   }
-  ctx.closePath();
-  const lg = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.2, 0, cx, cy, r);
-  lg.addColorStop(0, '#fffdf5'); lg.addColorStop(0.6, '#f5f0e8'); lg.addColorStop(1, '#ddd5c8');
-  ctx.fillStyle = lg; ctx.fill();
+
+  ctx.putImageData(imgData, 0, 0);
+  ctx.restore();
+
+  // Redraw the subtle rim
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5; ctx.stroke();
 }
 
 function renderCompass() {

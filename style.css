@@ -411,17 +411,30 @@ body {
 }
 
 #moon-canvas {
-  filter: drop-shadow(0 0 50px rgba(201,168,124,0.12))
-          drop-shadow(0 0 100px rgba(201,168,124,0.04));
   margin-bottom: 24px;
-  animation: moon-breathe 4s ease-in-out infinite;
   position: relative;
   z-index: 2;
+  border-radius: 50%;
+}
+
+/* Glow behind moon via wrapper, not filter (avoids square artifact) */
+.moon-glow-wrap {
+  position: relative;
+  display: inline-block;
+}
+.moon-glow-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,168,124,0.14) 0%, rgba(201,168,124,0.04) 50%, transparent 75%);
+  animation: moon-breathe 4s ease-in-out infinite;
+  z-index: 0;
 }
 
 @keyframes moon-breathe {
-  0%, 100% { filter: drop-shadow(0 0 50px rgba(201,168,124,0.10)) drop-shadow(0 0 100px rgba(201,168,124,0.03)); }
-  50%      { filter: drop-shadow(0 0 65px rgba(201,168,124,0.18)) drop-shadow(0 0 120px rgba(201,168,124,0.06)); }
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
 }
 
 .moon-hero-info {

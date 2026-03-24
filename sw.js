@@ -1,20 +1,7 @@
-const CACHE_NAME = 'moon-tracker-agnes-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/manifest.json',
-  'https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js',
-  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap'
-];
+const CACHE_NAME = 'moon-tracker-agnes-v16';
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  self.skipWaiting(); // Activate immediately
 });
 
 self.addEventListener('activate', event => {
@@ -28,20 +15,20 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Network-first for API calls
-  if (url.hostname.includes('overpass-api') ||
-      url.hostname.includes('nominatim') ||
-      url.hostname.includes('open-meteo')) {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
 
-  // Cache-first for static assets
+  // Network-first for EVERYTHING — always get fresh code
   event.respondWith(
-    caches.match(event.request)
-      .then(cached => cached || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        // Cache successful responses for offline fallback
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request)) // Offline fallback
   );
 });

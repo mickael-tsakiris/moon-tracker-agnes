@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
   <canvas id="stars" aria-hidden="true"></canvas>
@@ -65,7 +65,9 @@
         </header>
 
         <section class="card moon-hero">
-          <canvas id="moon-canvas" width="180" height="180"></canvas>
+          <div class="moon-glow-wrap">
+            <canvas id="moon-canvas" width="180" height="180"></canvas>
+          </div>
           <div class="moon-hero-info">
             <h2 id="phase-name" class="phase-name"></h2>
             <p id="illumination" class="illumination"></p>
@@ -275,6 +277,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
