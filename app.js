@@ -21,6 +21,7 @@ const state = {
 };
 
 const $ = id => document.getElementById(id);
+const sky = { stars: [], clouds: [], animId: null, w: 0, h: 0, time: 0 };
 
 // ============================
 // INIT
@@ -963,7 +964,6 @@ function renderLandmarks() {
 // ============================
 // ANIMATED SKY BACKGROUND
 // ============================
-const sky = { stars: [], clouds: [], animId: null, w: 0, h: 0, time: 0 };
 
 function initSkyBackground() {
   const canvas = $('stars');
