@@ -763,7 +763,7 @@ function renderMoonPhase() {
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   }
 
-  // --- Limb darkening on full photo ---
+  // --- Limb darkening ---
   const limb = ctx.createRadialGradient(cx, cy, r * 0.35, cx, cy, r);
   limb.addColorStop(0, 'rgba(0,0,0,0)');
   limb.addColorStop(0.65, 'rgba(0,0,0,0)');
@@ -772,6 +772,9 @@ function renderMoonPhase() {
   limb.addColorStop(1, 'rgba(0,0,0,0.4)');
   ctx.fillStyle = limb;
   ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+  // NOTE: Shadow uses sky-matching color (--bg-base #08091a with 97% opacity)
+  // so the dark side blends seamlessly with the surrounding sky
 
   // --- Phase shadow (dark side) with TILT ---
   if (frac < 0.995 && frac > 0.003) {
@@ -784,42 +787,28 @@ function renderMoonPhase() {
     ctx.translate(-cx, -cy);
 
     // Build the SHADOW path (dark area)
+    // CRITICAL: arc(start, end, true=counterclockwise) — counterclockwise means DECREASING angles
+    // From -PI/2(top) to PI/2(bottom) counterclockwise = through LEFT (via -PI/PI)
+    // From PI/2(bottom) to -PI/2(top) counterclockwise = through RIGHT (via 0)
     ctx.beginPath();
     if (isWaxing) {
-      // Waxing: LEFT side is dark
-      // Left semicircle (dark limb)
-      ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, true);
-      // Terminator back to close the shadow
-      ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, frac > 0.5);
-    } else {
-      // Waning: RIGHT side is dark
+      // Waxing: LEFT side is dark, RIGHT is lit
+      // LEFT semicircle: top → left → bottom
       ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, true);
+      // Terminator: bottom → right(crescent)/left(gibbous) → top
       ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+    } else {
+      // Waning: RIGHT side is dark, LEFT is lit
+      // RIGHT semicircle: bottom → right → top
+      ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, true);
+      // Terminator: top → left(crescent)/right(gibbous) → bottom
+      ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
     }
     ctx.closePath();
 
-    // Shadow: graduated, not flat — photo slightly visible through (earthshine)
-    const shadowGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    shadowGrad.addColorStop(0, 'rgba(8,8,18,0.88)');
-    shadowGrad.addColorStop(0.5, 'rgba(6,6,14,0.91)');
-    shadowGrad.addColorStop(0.85, 'rgba(4,4,10,0.94)');
-    shadowGrad.addColorStop(1, 'rgba(2,2,6,0.96)');
-    ctx.fillStyle = shadowGrad;
+    // Shadow matches the sky background — dark side should blend with sky
+    ctx.fillStyle = 'rgba(8,9,26,0.97)';
     ctx.fill();
-
-    // Soft terminator edge — penumbra gradient along the boundary
-    const penW = r * 0.05;
-    const termCenter = isWaxing ? cx + tw : cx - tw;
-    const penDir = isWaxing ? 1 : -1;
-    const pg = ctx.createLinearGradient(
-      termCenter - penW * penDir, cy,
-      termCenter + penW * 2 * penDir, cy
-    );
-    pg.addColorStop(0, 'rgba(6,6,14,0.6)');
-    pg.addColorStop(0.4, 'rgba(6,6,14,0.25)');
-    pg.addColorStop(1, 'rgba(6,6,14,0)');
-    ctx.fillStyle = pg;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
 
     ctx.restore(); // pop tilt rotation
   } else if (frac <= 0.003) {
@@ -1184,14 +1173,14 @@ function renderCompass() {
 
       ctx.beginPath();
       if (isWaxing) {
-        ctx.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, true);
-        ctx.ellipse(0, 0, tw, moonR, 0, -Math.PI / 2, Math.PI / 2, frac > 0.5);
-      } else {
         ctx.arc(0, 0, moonR, -Math.PI / 2, Math.PI / 2, true);
         ctx.ellipse(0, 0, tw, moonR, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+      } else {
+        ctx.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, true);
+        ctx.ellipse(0, 0, tw, moonR, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
       }
       ctx.closePath();
-      ctx.fillStyle = 'rgba(6,6,14,0.92)';
+      ctx.fillStyle = 'rgba(8,9,26,0.97)';
       ctx.fill();
       ctx.restore();
     } else if (frac <= 0.003) {
