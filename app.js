@@ -681,27 +681,15 @@ function renderAll() {
   $('last-update').textContent = `Mis à jour à ${formatTime(new Date())}`;
 }
 
-// Moon photo from NASA (public domain) — loaded once
+// Moon photo — local file (512x512, 59KB, public domain Wikipedia/NASA)
 let _moonImg = null;
 let _moonImgLoaded = false;
-let _moonImgFailed = false;
-const MOON_IMG_URL = 'https://svs.gsfc.nasa.gov/vis/a000000/a005200/a005288/lroc_color_poles_2k.jpg';
-// Fallback: smaller image
-const MOON_IMG_FALLBACK = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/FullMoon2010.jpg/480px-FullMoon2010.jpg';
 
 (function loadMoonImage() {
   _moonImg = new Image();
-  _moonImg.crossOrigin = 'anonymous';
   _moonImg.onload = () => { _moonImgLoaded = true; if (state.moonData) renderMoonPhase(); };
-  _moonImg.onerror = () => {
-    // Try fallback
-    _moonImg = new Image();
-    _moonImg.crossOrigin = 'anonymous';
-    _moonImg.onload = () => { _moonImgLoaded = true; if (state.moonData) renderMoonPhase(); };
-    _moonImg.onerror = () => { _moonImgFailed = true; };
-    _moonImg.src = MOON_IMG_FALLBACK;
-  };
-  _moonImg.src = MOON_IMG_URL;
+  _moonImg.onerror = () => { console.warn('Moon texture failed to load'); };
+  _moonImg.src = 'moon-texture.jpg';
 })();
 
 function renderMoonPhase() {

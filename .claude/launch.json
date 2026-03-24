@@ -4,7 +4,7 @@
     {
       "name": "moon-tracker",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", ".", "-p", "3456", "--no-clipboard", "-s"],
+      "runtimeArgs": ["serve", "/Users/mickaeltsakiris/Documents/moon-tracker-agnes", "-p", "3456", "--no-clipboard", "-s"],
       "port": 3456
     }
   ]
