@@ -1133,17 +1133,79 @@ function renderCompass() {
     ctx.fill();
   });
 
-  // Moon indicator
+  // Moon indicator — photo with phase, tilt, and all
   if (state.moonData) {
     const ma = moonAz * Math.PI / 180 - Math.PI / 2;
     const mr = R - 50;
-    const gg = ctx.createRadialGradient(Math.cos(ma) * mr, Math.sin(ma) * mr, 0, Math.cos(ma) * mr, Math.sin(ma) * mr, 25);
-    gg.addColorStop(0, 'rgba(201,168,124,0.25)'); gg.addColorStop(1, 'rgba(201,168,124,0)');
-    ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(Math.cos(ma) * mr, Math.sin(ma) * mr, 25, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(Math.cos(ma) * mr, Math.sin(ma) * mr, 10, 0, Math.PI * 2);
-    ctx.fillStyle = state.moonData.isAboveHorizon ? '#c9a87c' : 'rgba(201,168,124,0.3)'; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ma) * (mr - 14), Math.sin(ma) * (mr - 14));
+    const moonX = Math.cos(ma) * mr;
+    const moonY = Math.sin(ma) * mr;
+    const moonR = 18; // radius of mini moon on compass
+
+    // Subtle glow behind
+    const gg = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, moonR * 2);
+    gg.addColorStop(0, 'rgba(201,168,124,0.2)');
+    gg.addColorStop(1, 'rgba(201,168,124,0)');
+    ctx.fillStyle = gg;
+    ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2, 0, Math.PI * 2); ctx.fill();
+
+    // Line from center to moon
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ma) * (mr - moonR - 4), Math.sin(ma) * (mr - moonR - 4));
     ctx.strokeStyle = 'rgba(201,168,124,0.15)'; ctx.lineWidth = 1; ctx.stroke();
+
+    // Draw mini moon with photo + phase
+    ctx.save();
+    ctx.translate(moonX, moonY);
+    // Counter-rotate so moon stays upright regardless of compass rotation
+    ctx.rotate(-rot);
+
+    // Clip to mini moon circle
+    ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.clip();
+
+    // Draw moon photo
+    if (_moonImgLoaded && _moonImg) {
+      const imgSz = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
+      const isx = (_moonImg.naturalWidth - imgSz) / 2;
+      const isy = (_moonImg.naturalHeight - imgSz) / 2;
+      ctx.drawImage(_moonImg, isx, isy, imgSz, imgSz, -moonR, -moonR, moonR * 2, moonR * 2);
+    } else {
+      ctx.fillStyle = '#b0b0ac';
+      ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Phase shadow on mini moon
+    const frac = state.moonData.fraction;
+    const isWaxing = state.moonData.phaseAngle < 180;
+    const tilt = state.moonData.terminatorTilt || 0;
+
+    if (frac > 0.003 && frac < 0.995) {
+      const tw = moonR * Math.abs(2 * frac - 1);
+      ctx.save();
+      ctx.rotate(tilt);
+
+      ctx.beginPath();
+      if (isWaxing) {
+        ctx.arc(0, 0, moonR, Math.PI / 2, -Math.PI / 2, true);
+        ctx.ellipse(0, 0, tw, moonR, 0, -Math.PI / 2, Math.PI / 2, frac > 0.5);
+      } else {
+        ctx.arc(0, 0, moonR, -Math.PI / 2, Math.PI / 2, true);
+        ctx.ellipse(0, 0, tw, moonR, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(6,6,14,0.92)';
+      ctx.fill();
+      ctx.restore();
+    } else if (frac <= 0.003) {
+      ctx.fillStyle = 'rgba(6,6,14,0.92)';
+      ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Dim if below horizon
+    if (!state.moonData.isAboveHorizon) {
+      ctx.fillStyle = 'rgba(10,10,20,0.6)';
+      ctx.beginPath(); ctx.arc(0, 0, moonR, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
   }
 
   ctx.restore();
