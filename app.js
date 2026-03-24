@@ -712,97 +712,141 @@ function renderMoonPhase() {
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1; ctx.stroke();
 
-  // Use phaseAngle (0-360°) from MoonPhase() for accurate visual rendering
-  // phaseAngle: 0=new, 90=first quarter, 180=full, 270=last quarter
-  const pa = phaseAngle; // degrees, 0-360
   const frac = state.moonData.fraction;
-
   if (frac < 0.005) return; // New moon — all dark
 
-  // Lit side gradient
-  const litGrad = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, 0, cx, cy, r);
-  litGrad.addColorStop(0, '#fffdf5');
-  litGrad.addColorStop(0.5, '#f5f0e8');
-  litGrad.addColorStop(1, '#ddd5c8');
+  // ---- STEP 1: Draw realistic lunar texture with craters ----
+  // Create offscreen canvas for the full moon texture
+  const tex = document.createElement('canvas');
+  tex.width = size * dpr; tex.height = size * dpr;
+  const tc = tex.getContext('2d');
+  tc.scale(dpr, dpr);
 
-  if (frac > 0.995) {
-    // Full moon
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = litGrad; ctx.fill();
-    return;
-  }
+  // Base moon color — warm grey
+  const baseGrad = tc.createRadialGradient(cx - r * 0.2, cy - r * 0.25, 0, cx, cy, r);
+  baseGrad.addColorStop(0, '#e8e4dc');
+  baseGrad.addColorStop(0.4, '#d8d2c6');
+  baseGrad.addColorStop(0.7, '#c5bcad');
+  baseGrad.addColorStop(1, '#a89e8e');
+  tc.beginPath(); tc.arc(cx, cy, r, 0, Math.PI * 2);
+  tc.fillStyle = baseGrad; tc.fill();
 
-  // Draw lit portion using pixel-by-pixel for accuracy
-  // This avoids the arc/ellipse bugs entirely
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.clip();
+  // Maria (dark plains) — the recognizable dark patches
+  const maria = [
+    { x: 0.15, y: -0.25, r: 0.28, a: 0.18 },  // Mare Imbrium (upper left)
+    { x: -0.1, y: -0.15, r: 0.22, a: 0.15 },   // Mare Serenitatis
+    { x: -0.15, y: 0.05, r: 0.25, a: 0.16 },    // Mare Tranquillitatis
+    { x: 0.25, y: 0.1, r: 0.2, a: 0.12 },       // Oceanus Procellarum
+    { x: -0.05, y: 0.3, r: 0.18, a: 0.13 },     // Mare Fecunditatis
+    { x: 0.3, y: -0.1, r: 0.15, a: 0.1 },       // Mare Humorum
+    { x: -0.25, y: -0.35, r: 0.12, a: 0.09 },   // small mare top right
+  ];
+  maria.forEach(m => {
+    const mg = tc.createRadialGradient(
+      cx + m.x * r, cy + m.y * r, 0,
+      cx + m.x * r, cy + m.y * r, m.r * r
+    );
+    mg.addColorStop(0, `rgba(80,75,65,${m.a})`);
+    mg.addColorStop(0.7, `rgba(90,82,70,${m.a * 0.5})`);
+    mg.addColorStop(1, 'rgba(90,82,70,0)');
+    tc.fillStyle = mg;
+    tc.beginPath();
+    tc.arc(cx + m.x * r, cy + m.y * r, m.r * r, 0, Math.PI * 2);
+    tc.fill();
+  });
 
-  // Create offscreen computation: for each column, determine if lit
-  const imgData = ctx.createImageData(size * dpr, size * dpr);
-
-  // Pre-compute lit color (approximate the gradient as warm white)
-  const litR = 245, litG = 240, litB = 232;
-  const darkR = 18, darkG = 18, darkB = 42;
-
-  for (let py = 0; py < size * dpr; py++) {
-    for (let px = 0; px < size * dpr; px++) {
-      const x = px / dpr - cx;
-      const y = py / dpr - cy;
-      const dist = Math.sqrt(x * x + y * y);
-      if (dist > r) continue;
-
-      // Normalized position on the moon disk (-1 to 1)
-      const nx = x / r;
-      const ny = y / r;
-
-      // Longitude on the sphere: asin(nx / cos(asin(ny)))
-      // Simplified: the terminator is at a specific longitude
-      // Phase angle in radians for terminator position
-      const terminatorLon = (pa / 180 - 1) * Math.PI; // -PI to +PI
-
-      // Longitude of this point on the sphere
-      const sinLat = ny;
-      const cosLat = Math.sqrt(Math.max(0, 1 - sinLat * sinLat));
-      const pointLon = cosLat > 0.001 ? Math.asin(Math.max(-1, Math.min(1, nx / cosLat))) : 0;
-
-      // Point is lit if its longitude is on the sun-facing side
-      // For waxing (pa 0-180): lit when pointLon > terminatorLon
-      // For waning (pa 180-360): lit when pointLon < terminatorLon mapped
-      let isLit;
-      if (pa <= 180) {
-        // Waxing: sun comes from the right (positive lon = west = right in northern hemisphere view)
-        isLit = pointLon > terminatorLon;
-      } else {
-        // Waning: sun from the left
-        const termWane = (2 - pa / 180) * Math.PI - Math.PI;
-        isLit = pointLon < termWane;
-      }
-
-      const idx = (py * size * dpr + px) * 4;
-      if (isLit) {
-        // Lit with gradient effect (brighter toward upper-left)
-        const gradFactor = 1 - dist / r * 0.3 + (-nx * 0.1 - ny * 0.1);
-        const f = Math.max(0.6, Math.min(1, gradFactor));
-        imgData.data[idx] = Math.round(litR * f);
-        imgData.data[idx + 1] = Math.round(litG * f);
-        imgData.data[idx + 2] = Math.round(litB * f);
-        imgData.data[idx + 3] = 255;
-      } else {
-        // Dark side — subtle visibility
-        imgData.data[idx] = darkR;
-        imgData.data[idx + 1] = darkG;
-        imgData.data[idx + 2] = darkB;
-        imgData.data[idx + 3] = 255;
+  // Craters — small circular highlights with shadow
+  const craters = [
+    { x: -0.35, y: 0.4, r: 0.07 },   // Tycho
+    { x: -0.3, y: -0.1, r: 0.05 },
+    { x: 0.1, y: 0.35, r: 0.04 },
+    { x: -0.15, y: -0.4, r: 0.06 },
+    { x: 0.35, y: -0.3, r: 0.04 },
+    { x: 0.2, y: 0.25, r: 0.035 },
+    { x: -0.4, y: 0.15, r: 0.045 },
+    { x: 0.05, y: -0.05, r: 0.03 },
+    { x: -0.25, y: 0.25, r: 0.05 },
+    { x: 0.4, y: 0.05, r: 0.03 },
+    { x: -0.05, y: -0.35, r: 0.04 },
+    { x: 0.15, y: -0.45, r: 0.035 },
+  ];
+  craters.forEach(c => {
+    const crx = cx + c.x * r, cry = cy + c.y * r, crr = c.r * r;
+    // Dark rim
+    tc.beginPath(); tc.arc(crx, cry, crr, 0, Math.PI * 2);
+    tc.fillStyle = 'rgba(60,55,45,0.12)'; tc.fill();
+    // Bright center (lighter than surroundings)
+    tc.beginPath(); tc.arc(crx + crr * 0.15, cry + crr * 0.15, crr * 0.6, 0, Math.PI * 2);
+    tc.fillStyle = 'rgba(220,215,200,0.08)'; tc.fill();
+    // Bright ray from Tycho-like craters
+    if (c.r > 0.06) {
+      tc.strokeStyle = 'rgba(200,195,185,0.06)';
+      tc.lineWidth = 1;
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
+        tc.beginPath();
+        tc.moveTo(crx + Math.cos(a) * crr, cry + Math.sin(a) * crr);
+        tc.lineTo(crx + Math.cos(a) * crr * 4, cry + Math.sin(a) * crr * 4);
+        tc.stroke();
       }
     }
-  }
+  });
 
-  ctx.putImageData(imgData, 0, 0);
+  // Subtle noise for surface texture
+  tc.globalCompositeOperation = 'overlay';
+  for (let i = 0; i < 600; i++) {
+    const nx = cx + (Math.random() - 0.5) * r * 2;
+    const ny = cy + (Math.random() - 0.5) * r * 2;
+    const d = Math.sqrt((nx - cx) ** 2 + (ny - cy) ** 2);
+    if (d > r) continue;
+    tc.beginPath(); tc.arc(nx, ny, Math.random() * 1.5 + 0.3, 0, Math.PI * 2);
+    tc.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
+    tc.fill();
+  }
+  tc.globalCompositeOperation = 'source-over';
+
+  // Limb darkening (edges darker)
+  const limb = tc.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
+  limb.addColorStop(0, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.8, 'rgba(0,0,0,0.05)');
+  limb.addColorStop(1, 'rgba(0,0,0,0.25)');
+  tc.fillStyle = limb;
+  tc.beginPath(); tc.arc(cx, cy, r, 0, Math.PI * 2); tc.fill();
+
+  // ---- STEP 2: Apply phase mask ----
+  // Draw the full textured moon, then erase the dark portion
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+  ctx.drawImage(tex, 0, 0, size, size);
   ctx.restore();
 
-  // Redraw the subtle rim
+  // Now overdraw the dark side on top
+  if (frac < 0.995) {
+    const tw = r * Math.abs(2 * frac - 1);
+    const isWaxing = phase < 0.5;
+    const isCrescent = frac < 0.5;
+
+    // Build the DARK area path
+    ctx.beginPath();
+    if (isWaxing) {
+      // Waxing: dark side is LEFT
+      ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, false); // left semicircle
+      ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, isCrescent);
+    } else {
+      // Waning: dark side is RIGHT
+      ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false); // right semicircle
+      ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, isCrescent);
+    }
+    ctx.closePath();
+
+    // Fill dark side with near-black (matching the dark body already drawn)
+    const darkGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    darkGrad.addColorStop(0, '#1a1a30');
+    darkGrad.addColorStop(1, '#0e0e20');
+    ctx.fillStyle = darkGrad;
+    ctx.fill();
+  }
+
+  // Subtle rim light
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.5; ctx.stroke();
 }
