@@ -27,8 +27,12 @@ const sky = {}; // kept for compat — CSS sky now handles rendering
 // INIT
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
-  // Start CSS sky — set initial colors
-  try { updateSky(); setInterval(updateSky, 60000); } catch (e) { console.error('Sky init error:', e); }
+  // Start CSS sky + generate cloud textures
+  try {
+    generateCloudImages();
+    updateSky();
+    setInterval(updateSky, 60000);
+  } catch (e) { console.error('Sky init error:', e); }
 
   $('btn-start')?.addEventListener('click', startApp);
   $('btn-retry')?.addEventListener('click', () => { showScreen('loading'); startApp(); });
@@ -1294,25 +1298,79 @@ function updateSky() {
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
   el.style.setProperty('--cloud-opacity', cloudOpacity.toFixed(3));
 
-  // Cloud color: must CONTRAST with sky background
-  // Overcast sky is grey (~100) → clouds must be darker (~50-70) or lighter (~160+)
-  // Night sky is dark (~10-20) → clouds must be lighter (~60-80)
-  const isNightSky = sunAlt < -6;
-  let cGrey, cAlpha;
-  if (isNightSky) {
-    // Night: lighter grey clouds against dark sky
-    cGrey = Math.round(60 + (1 - cloudFactor) * 40); // 60-100
-    cAlpha = 0.3 + cloudFactor * 0.4; // 0.3-0.7
+  // Update cloud tint based on time of day + weather
+  updateCloudColor();
+}
+
+// Generate cloud images at runtime — soft ellipse stacks = natural cloud shapes
+function generateCloudImages() {
+  const configs = [
+    { w: 550, h: 200, blobs: [{x:0.15,y:0.55,rx:0.18,ry:0.35},{x:0.30,y:0.38,rx:0.20,ry:0.42},{x:0.45,y:0.30,rx:0.22,ry:0.48},{x:0.60,y:0.35,rx:0.20,ry:0.40},{x:0.75,y:0.45,rx:0.16,ry:0.32},{x:0.42,y:0.60,rx:0.28,ry:0.28}] },
+    { w: 450, h: 170, blobs: [{x:0.22,y:0.50,rx:0.20,ry:0.40},{x:0.42,y:0.35,rx:0.22,ry:0.45},{x:0.60,y:0.38,rx:0.20,ry:0.38},{x:0.78,y:0.48,rx:0.15,ry:0.30},{x:0.45,y:0.58,rx:0.26,ry:0.26}] },
+    { w: 600, h: 220, blobs: [{x:0.12,y:0.52,rx:0.16,ry:0.32},{x:0.28,y:0.38,rx:0.18,ry:0.40},{x:0.42,y:0.28,rx:0.22,ry:0.48},{x:0.58,y:0.32,rx:0.20,ry:0.44},{x:0.72,y:0.40,rx:0.18,ry:0.36},{x:0.85,y:0.50,rx:0.14,ry:0.28},{x:0.45,y:0.62,rx:0.30,ry:0.26}] },
+    { w: 420, h: 160, blobs: [{x:0.25,y:0.48,rx:0.20,ry:0.38},{x:0.45,y:0.35,rx:0.22,ry:0.44},{x:0.65,y:0.42,rx:0.18,ry:0.34},{x:0.80,y:0.52,rx:0.14,ry:0.28},{x:0.48,y:0.60,rx:0.25,ry:0.25}] }
+  ];
+
+  const clouds = document.querySelectorAll('.sky-cloud');
+  configs.forEach((cfg, i) => {
+    if (!clouds[i]) return;
+    const c = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 1;
+    c.width = cfg.w * dpr; c.height = cfg.h * dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Draw soft ellipses stacked to form a cloud — high opacity for visibility
+    cfg.blobs.forEach(b => {
+      const grd = ctx.createRadialGradient(
+        cfg.w * b.x, cfg.h * b.y, 0,
+        cfg.w * b.x, cfg.h * b.y, cfg.w * b.rx
+      );
+      grd.addColorStop(0, 'rgba(255,255,255,1)');
+      grd.addColorStop(0.3, 'rgba(255,255,255,0.85)');
+      grd.addColorStop(0.6, 'rgba(255,255,255,0.45)');
+      grd.addColorStop(0.85, 'rgba(255,255,255,0.12)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.ellipse(cfg.w * b.x, cfg.h * b.y, cfg.w * b.rx * 1.3, cfg.h * b.ry * 1.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    clouds[i].style.backgroundImage = `url(${c.toDataURL()})`;
+  });
+}
+
+// Update cloud color by tinting the cloud elements
+function updateCloudColor() {
+  const sunAlt = _getSunAltitude();
+  const cloudFactor = Math.min(1, (state.cloudCover ?? 20) / 100);
+  const isNight = sunAlt < -6;
+
+  // Determine cloud tint via CSS filter on the cloud elements
+  // Night: darker, blue-tinted. Overcast day: grey. Clear day: white
+  let brightness, hueRotate, saturate;
+  if (isNight) {
+    // Night: dim clouds, slight blue tint
+    brightness = 0.25 + (1 - cloudFactor) * 0.15;
+    hueRotate = 210;
+    saturate = 0.4;
   } else if (cloudFactor > 0.5) {
-    // Overcast day: DARKER clouds against grey sky for contrast
-    cGrey = Math.round(40 + (1 - cloudFactor) * 30); // 40-70 (much darker than sky ~100)
-    cAlpha = 0.4 + cloudFactor * 0.35; // 0.4-0.75
+    // Overcast day: clouds LIGHTER than grey sky = visible white/light grey masses
+    brightness = 0.85;
+    hueRotate = 0;
+    saturate = 0.2;
   } else {
-    // Clear/partly cloudy day: white/light clouds against blue sky
-    cGrey = Math.round(200 + (1 - cloudFactor) * 40); // 200-240
-    cAlpha = 0.3 + cloudFactor * 0.3; // 0.3-0.6
+    // Clear/partly cloudy: bright white clouds on blue sky
+    brightness = 1;
+    hueRotate = 0;
+    saturate = 0;
   }
-  el.style.setProperty('--cloud-color', `rgba(${cGrey},${cGrey + 3},${cGrey + 5},${cAlpha.toFixed(2)})`);
+
+  document.querySelectorAll('.sky-cloud').forEach(el => {
+    el.style.filter = `brightness(${brightness}) hue-rotate(${hueRotate}deg) saturate(${saturate})`;
+    el.style.webkitFilter = el.style.filter;
+  });
 }
 
 // Weather effects: rain + enhanced clouds based on real data
