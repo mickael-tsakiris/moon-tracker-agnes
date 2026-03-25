@@ -731,116 +731,99 @@ function renderMoonPhase() {
   const cx = size / 2, cy = size / 2, r = 90;
   const { phaseAngle, terminatorTilt } = state.moonData;
   const frac = state.moonData.fraction;
-  const tilt = terminatorTilt || 0; // rotation angle in radians
+  // Attenuate tilt to 35% for aesthetics (full astronomical tilt looks wrong on phone)
+  const tilt = (terminatorTilt || 0) * 0.35;
   ctx.clearRect(0, 0, size, size);
 
   const isWaxing = phaseAngle < 180;
 
-  // --- Outer glow — ONLY on the lit side ---
-  const glowTilt = tilt || 0;
-  // Offset glow center toward the lit limb
-  const litDirX = isWaxing ? 1 : -1;
-  const glowCx = cx + Math.cos(glowTilt) * litDirX * r * 0.4;
-  const glowCy = cy + Math.sin(glowTilt) * litDirX * r * 0.4;
-  const glow = ctx.createRadialGradient(glowCx, glowCy, r * 0.5, glowCx, glowCy, r * 1.5);
-  glow.addColorStop(0, `rgba(200,210,230,${0.05 * frac})`);
-  glow.addColorStop(0.5, `rgba(180,190,210,${0.02 * frac})`);
-  glow.addColorStop(1, 'rgba(180,190,210,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, size, size);
+  // NO outer glow. NO rim highlight. Clean render only.
 
   // --- Moon disc clip ---
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
 
-  // --- Full moon photo first (entire disc) ---
+  // --- Full moon photo (entire disc) ---
   if (_moonImgLoaded && _moonImg) {
     const imgSize = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
     const sx = (_moonImg.naturalWidth - imgSize) / 2;
     const sy = (_moonImg.naturalHeight - imgSize) / 2;
     ctx.drawImage(_moonImg, sx, sy, imgSize, imgSize, cx - r, cy - r, r * 2, r * 2);
   } else {
-    const fb = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    const fb = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.2, 0, cx, cy, r);
     fb.addColorStop(0, '#c8c8c4');
-    fb.addColorStop(0.5, '#b0b0ac');
-    fb.addColorStop(1, '#888884');
+    fb.addColorStop(0.6, '#a8a8a4');
+    fb.addColorStop(1, '#787874');
     ctx.fillStyle = fb;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
   }
 
-  // --- Limb darkening ---
-  const limb = ctx.createRadialGradient(cx, cy, r * 0.35, cx, cy, r);
+  // --- Subtle limb darkening ---
+  const limb = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
   limb.addColorStop(0, 'rgba(0,0,0,0)');
-  limb.addColorStop(0.65, 'rgba(0,0,0,0)');
-  limb.addColorStop(0.82, 'rgba(0,0,0,0.08)');
-  limb.addColorStop(0.93, 'rgba(0,0,0,0.22)');
-  limb.addColorStop(1, 'rgba(0,0,0,0.4)');
+  limb.addColorStop(0.75, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.92, 'rgba(0,0,0,0.12)');
+  limb.addColorStop(1, 'rgba(0,0,0,0.3)');
   ctx.fillStyle = limb;
-  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
 
-  // NOTE: Shadow uses sky-matching color (--bg-base #08091a with 97% opacity)
-  // so the dark side blends seamlessly with the surrounding sky
-
-  // --- Phase shadow (dark side) with TILT ---
+  // --- Phase shadow with SOFT TERMINATOR ---
   if (frac < 0.995 && frac > 0.003) {
     const tw = r * Math.abs(2 * frac - 1);
 
-    // Rotate around center for terminator tilt
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tilt);
-    ctx.translate(-cx, -cy);
+    // Draw shadow on offscreen canvas then apply blur for soft terminator
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = size * dpr;
+    offCanvas.height = size * dpr;
+    const off = offCanvas.getContext('2d');
+    off.scale(dpr, dpr);
 
-    // Build the SHADOW path (dark area)
-    // CRITICAL: arc(start, end, true=counterclockwise) — counterclockwise means DECREASING angles
-    // From -PI/2(top) to PI/2(bottom) counterclockwise = through LEFT (via -PI/PI)
-    // From PI/2(bottom) to -PI/2(top) counterclockwise = through RIGHT (via 0)
-    ctx.beginPath();
+    // Clip to moon disc on offscreen too
+    off.beginPath(); off.arc(cx, cy, r, 0, Math.PI * 2); off.clip();
+
+    // Apply tilt rotation
+    off.save();
+    off.translate(cx, cy);
+    off.rotate(tilt);
+    off.translate(-cx, -cy);
+
+    // Shadow path
+    off.beginPath();
     if (isWaxing) {
-      // Waxing: LEFT side is dark, RIGHT is lit
-      // LEFT semicircle: top → left → bottom
-      ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, true);
-      // Terminator: bottom → right(crescent)/left(gibbous) → top
-      ctx.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+      // LEFT semicircle (counterclockwise from top through left to bottom)
+      off.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, true);
+      // Terminator ellipse
+      off.ellipse(cx, cy, tw, r, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
     } else {
-      // Waning: RIGHT side is dark, LEFT is lit
-      // RIGHT semicircle: bottom → right → top
-      ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, true);
-      // Terminator: top → left(crescent)/right(gibbous) → bottom
-      ctx.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
+      // RIGHT semicircle (counterclockwise from bottom through right to top)
+      off.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, true);
+      // Terminator ellipse
+      off.ellipse(cx, cy, tw, r, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
     }
-    ctx.closePath();
+    off.closePath();
 
-    // Shadow matches the sky background — dark side should blend with sky
-    ctx.fillStyle = 'rgba(8,9,26,0.97)';
-    ctx.fill();
+    // Earthshine: dark but not pure black, slight blue tint
+    off.fillStyle = 'rgba(6,8,22,0.95)';
+    off.fill();
+    off.restore();
 
-    ctx.restore(); // pop tilt rotation
+    // Composite shadow onto main canvas WITH blur for soft terminator
+    ctx.save();
+    try {
+      ctx.filter = 'blur(3px)';
+    } catch (e) { /* fallback: no blur on older browsers */ }
+    ctx.drawImage(offCanvas, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+    ctx.filter = 'none';
+    ctx.restore();
+
   } else if (frac <= 0.003) {
-    // New moon — full shadow
-    const nm = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    nm.addColorStop(0, 'rgba(8,8,18,0.92)');
-    nm.addColorStop(1, 'rgba(2,2,6,0.97)');
-    ctx.fillStyle = nm;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // New moon — full shadow with earthshine
+    ctx.fillStyle = 'rgba(6,8,22,0.94)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
   }
 
   ctx.restore(); // pop moon disc clip
-
-  // Subtle rim highlight — only on lit limb
-  if (frac > 0.01) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tilt);
-    const rimStart = isWaxing ? -Math.PI / 2 : Math.PI / 2;
-    const rimEnd = isWaxing ? Math.PI / 2 : -Math.PI / 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, rimStart, rimEnd, false);
-    ctx.strokeStyle = `rgba(220,225,240,${0.05 * Math.min(1, frac * 3)})`;
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-    ctx.restore();
-  }
+  // NO rim, NO border, NO glow — clean edges only
 }
 
 function _buildMoonTexture_REMOVED() { /* replaced by NASA photo */ }
