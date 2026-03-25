@@ -1946,6 +1946,11 @@ const VAPID_PUBLIC_KEY = 'BPblSpfMWkRcnITlHzMph5wpW15AN9JgHiVFnv4nQWPwC-cDlBU9-B
 const PUSH_API_URL = 'https://moon-push.mickael-tsakiris.workers.dev'; // Deployed
 
 function showNotificationBanner() {
+  // ?reset-push in URL clears push state for testing
+  if (location.search.includes('reset-push')) {
+    localStorage.removeItem('push-subscribed');
+    localStorage.removeItem('push-dismissed');
+  }
   if (localStorage.getItem('push-subscribed') === 'true') return;
   if (localStorage.getItem('push-dismissed') === 'true') return;
 
@@ -1998,9 +2003,17 @@ function showNotificationBanner() {
   `;
   document.body.appendChild(banner);
 
-  $('btn-notif-yes')?.addEventListener('click', () => {
-    banner.remove();
-    subscribeToPush().catch(e => console.log('Push:', e.message));
+  $('btn-notif-yes')?.addEventListener('click', async () => {
+    banner.innerHTML = '<div style="padding:0.5rem">Activation en cours...</div>';
+    try {
+      await subscribeToPush();
+      banner.innerHTML = '<div style="padding:0.5rem;color:#8f8">Notifications activées !</div>';
+      setTimeout(() => banner.remove(), 2000);
+    } catch (e) {
+      banner.innerHTML = `<div style="padding:0.5rem;color:#f88">Erreur : ${e.message}</div>`;
+      console.error('Push subscription error:', e);
+      setTimeout(() => banner.remove(), 4000);
+    }
   });
   $('btn-notif-no')?.addEventListener('click', () => {
     banner.remove();
