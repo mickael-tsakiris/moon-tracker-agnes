@@ -2035,28 +2035,44 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function subscribeToPush() {
-  if (!('PushManager' in window) || !('serviceWorker' in navigator)) {
-    throw new Error('Push non supporté sur ce navigateur');
-  }
+  const status = (msg) => {
+    const b = $('notif-banner');
+    if (b) b.innerHTML = `<div style="padding:0.5rem;font-size:0.8rem">${msg}</div>`;
+  };
+
+  if (!('PushManager' in window)) throw new Error('PushManager absent');
+  if (!('serviceWorker' in navigator)) throw new Error('ServiceWorker absent');
+  if (!('Notification' in window)) throw new Error('Notification API absente');
 
   if (localStorage.getItem('push-subscribed') === 'true') return;
 
+  status('Demande de permission...');
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
-    throw new Error('Permission refusée');
-  }
+  if (permission !== 'granted') throw new Error('Permission: ' + permission);
 
+  status('Attente du Service Worker...');
   const reg = await navigator.serviceWorker.ready;
+
+  status('Vérification abonnement existant...');
   let subscription = await reg.pushManager.getSubscription();
 
   if (!subscription) {
+    status('Création de l\'abonnement push...');
     const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-    subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey
-    });
+
+    // Timeout de 10s car pushManager.subscribe peut bloquer sur iOS
+    subscription = await Promise.race([
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout — pushManager.subscribe bloqué (10s)')), 10000)
+      )
+    ]);
   }
 
+  status('Envoi au serveur...');
   const resp = await fetch(PUSH_API_URL + '/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
