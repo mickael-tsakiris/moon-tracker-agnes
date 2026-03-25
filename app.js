@@ -449,10 +449,13 @@ function generateMainDescription() {
 
   // --- Moon below horizon ---
   if (!m.isAboveHorizon) {
-    const streetRef = findStreetInDirection(calcMoonRiseAzimuth() || m.azimuth);
+    const riseAz = calcMoonRiseAzimuth() || m.azimuth;
+    const streetRef = findStreetInDirection(riseAz);
+    const anyRef = findAnyPhysicalRef(riseAz);
     if (m.rise && m.rise > new Date()) {
       let desc = `La Lune est sous l'horizon. Elle apparaîtra à ${formatTime(m.rise)}`;
-      desc += streetRef ? `, côté ${streetRef}` : `, direction ${dir}`;
+      if (streetRef) desc += `, côté ${streetRef}`;
+      else if (anyRef) desc += `, vers ${anyRef}`;
       desc += '.';
       if (state.cloudCover !== null && state.cloudCover > 70)
         desc += ` Ciel couvert à ${Math.round(state.cloudCover)}%.`;
@@ -512,13 +515,19 @@ function generateMainDescription() {
         desc = `Tourne le dos à ${streetName}. La Lune est dans la direction opposée, ${altDesc}.`;
       } else {
         const streetSide = anyStreet.moonAngleDiff > 0 ? 'droite' : 'gauche';
-        desc = `Depuis ${streetName}, tourne à ${streetSide} direction ${dir}. La Lune est ${altDesc}.`;
+        desc = `Depuis ${streetName}, tourne à ${streetSide}. La Lune est ${altDesc}.`;
       }
     } else if (anyPOI) {
       const side = anyPOI.moonAngleDiff > 0 ? 'droite' : 'gauche';
-      desc = `Regarde vers ${anyPOI.name} puis tourne à ${side}. La Lune est ${altDesc}, direction ${dir}.`;
+      desc = `Regarde vers ${anyPOI.name} puis tourne à ${side}. La Lune est ${altDesc}.`;
     } else {
-      desc = `Regarde vers le ${dir} et lève les yeux. La Lune est ${altDesc}.`;
+      // Dernier recours : chercher n'importe quel repere physique
+      const lastRef = findAnyPhysicalRef(m.azimuth);
+      if (lastRef) {
+        desc = `Tourne-toi vers ${lastRef} et lève les yeux. La Lune est ${altDesc}.`;
+      } else {
+        desc = `Lève les yeux, la Lune est ${altDesc}.`;
+      }
     }
   }
 
@@ -563,6 +572,19 @@ function findStreetInDirection(azimuth) {
   return null;
 }
 
+// Find ANY physical reference near a given azimuth (street, POI, shop — anything)
+function findAnyPhysicalRef(azimuth) {
+  if (!state.landmarks.length) return null;
+  let best = null, bestDiff = 999;
+  state.landmarks.forEach(lm => {
+    let diff = Math.abs(azimuth - lm.bearing);
+    if (diff > 180) diff = 360 - diff;
+    if (diff < bestDiff) { bestDiff = diff; best = lm; }
+  });
+  if (!best || bestDiff > 60) return null;
+  return best.isStreet ? fmtStreetName(best.name) : best.name;
+}
+
 // Format street name: add article if needed
 function fmtStreetName(name) {
   if (/^(rue|avenue|boulevard|place|passage|impasse|allée|quai|cours|chemin|square)/i.test(name)) {
@@ -596,7 +618,6 @@ function calcMoonRiseAzimuth() {
 function lmDescription(lm) {
   if (!state.moonData?.isAboveHorizon) return 'Lune sous l\'horizon';
   const d = lm.moonAbsDiff;
-  const moonDir = azToCardinal(state.moonData.azimuth);
 
   // Find a SECOND reference to orient the user relative to this landmark
   const orient = findOrientRef(lm);
@@ -612,15 +633,15 @@ function lmDescription(lm) {
   if (d < 20) {
     return orient
       ? `Lune légèrement à ${side} quand tu regardes vers ${orient}`
-      : `Lune légèrement à ${side} (direction ${moonDir})`;
+      : `Lune légèrement à ${side}`;
   }
   if (d < 45) {
     return orient
       ? `Lune à ${side} quand tu fais face à ${orient}`
-      : `Lune à ${side} (direction ${moonDir})`;
+      : `Lune à ${side}`;
   }
-  if (d > 135) return `Lune à l'opposé (direction ${moonDir})`;
-  return `Lune direction ${moonDir}`;
+  if (d > 135) return `Lune à l'opposé`;
+  return orient ? `Lune vers ${orient}` : `Lune de l'autre côté`;
 }
 
 // Find a second landmark to orient the user: "quand tu regardes vers [X]"
@@ -714,6 +735,22 @@ function renderAll() {
   $('last-update').textContent = `Mis à jour à ${formatTime(new Date())}`;
 }
 
+// Sun altitude helper — used for moon tint and sky
+function _getSunAltitude() {
+  try {
+    if (state.lat != null && state.lng != null && typeof Astronomy !== 'undefined') {
+      const now = Astronomy.MakeTime(new Date());
+      const observer = new Astronomy.Observer(state.lat, state.lng, 0);
+      const sunEq = Astronomy.Equator('Sun', now, observer, true, true);
+      const sunHor = Astronomy.Horizon(now, observer, sunEq.ra, sunEq.dec, 'normal');
+      return sunHor.altitude;
+    }
+  } catch (_) {}
+  // Fallback: rough estimate from hour
+  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  return 50 * Math.sin(((h - 6) / 12) * Math.PI);
+}
+
 // Moon photo — local file (512x512, 59KB, public domain Wikipedia/NASA)
 let _moonImg = null;
 let _moonImgLoaded = false;
@@ -737,127 +774,136 @@ function renderMoonPhase() {
   ctx.scale(dpr, dpr);
 
   const cx = size / 2, cy = size / 2, r = 92;
-  const { phaseAngle, terminatorTilt } = state.moonData;
   const frac = state.moonData.fraction;
-  const tilt = (terminatorTilt || 0) * 0.35;
-  const isWaxing = phaseAngle < 180;
+  const tilt = (state.moonData.terminatorTilt || 0) * 0.35;
+  const isWaxing = state.moonData.phaseAngle < 180;
   const tw = r * Math.abs(2 * frac - 1);
+  const sunAlt = _getSunAltitude();
 
   ctx.clearRect(0, 0, size, size);
 
-  // === NEW APPROACH: draw lit moon, then ERASE dark side to transparency ===
-  // Dark side = transparent = sky shows through perfectly. Zero color matching.
+  // === APPROACH: alpha mask on separate canvas ===
+  // 1. Build a white lit-side mask with blurred edge (on mask canvas)
+  // 2. Draw moon photo on main offscreen canvas
+  // 3. Apply mask via destination-in → clean soft terminator, no dark fringe
 
-  // STEP 1: Draw full moon photo clipped to disc
-  ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+  // --- MASK CANVAS: white = visible, transparent = hidden ---
+  const mask = document.createElement('canvas');
+  mask.width = size * dpr; mask.height = size * dpr;
+  const mc = mask.getContext('2d');
+  mc.scale(dpr, dpr);
 
-  // Atmospheric softening: blur the photo slightly (naked eye = soft craters, not sharp)
-  try { ctx.filter = 'blur(1.2px)'; } catch (e) {}
-
-  if (_moonImgLoaded && _moonImg) {
-    const imgSize = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
-    const sx = (_moonImg.naturalWidth - imgSize) / 2;
-    const sy = (_moonImg.naturalHeight - imgSize) / 2;
-    ctx.drawImage(_moonImg, sx, sy, imgSize, imgSize, cx - r - 2, cy - r - 2, (r + 2) * 2, (r + 2) * 2);
+  // Draw the LIT side shape in white, with blur applied to the draw operation
+  if (frac >= 0.995) {
+    mc.fillStyle = '#fff';
+    mc.beginPath(); mc.arc(cx, cy, r + 2, 0, Math.PI * 2); mc.fill();
+  } else if (frac <= 0.005) {
+    // New moon — nothing visible (leave mask empty)
   } else {
-    const fb = ctx.createRadialGradient(cx - r * 0.15, cy - r * 0.15, 0, cx, cy, r);
-    fb.addColorStop(0, '#c0c0bc'); fb.addColorStop(0.6, '#a0a09c'); fb.addColorStop(1, '#70706c');
-    ctx.fillStyle = fb;
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  }
-
-  ctx.filter = 'none';
-
-  // Time-of-day color tint: golden at night, pale/white during day
-  const h = new Date().getHours();
-  const isNight = h >= 20 || h < 6;
-  const isDusk = (h >= 18 && h < 20) || (h >= 6 && h < 8);
-  if (isNight) {
-    // Warm golden-silver tint (moonlight as seen by eye)
-    ctx.fillStyle = 'rgba(220,200,150,0.12)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  } else if (isDusk) {
-    // Slight warm tint
-    ctx.fillStyle = 'rgba(210,190,140,0.07)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  } else {
-    // Daytime: slightly desaturated, paler
-    ctx.fillStyle = 'rgba(200,210,230,0.08)';
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-  }
-
-  // Limb darkening
-  const limb = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
-  limb.addColorStop(0, 'rgba(0,0,0,0)');
-  limb.addColorStop(0.85, 'rgba(0,0,0,0)');
-  limb.addColorStop(0.96, 'rgba(0,0,0,0.12)');
-  limb.addColorStop(1, 'rgba(0,0,0,0.28)');
-  ctx.fillStyle = limb;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-
-  ctx.restore(); // pop disc clip
-
-  // STEP 2: ERASE the dark side completely (destination-out)
-  if (frac < 0.995 && frac > 0.003) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.translate(cx, cy);
-    ctx.rotate(tilt);
-    ctx.translate(-cx, -cy);
-
-    // Dark side eraser path — slightly oversized to clean edges
-    ctx.beginPath();
+    // Draw lit shape on a temp canvas, then draw it blurred onto the mask
+    const tmp = document.createElement('canvas');
+    tmp.width = size * dpr; tmp.height = size * dpr;
+    const tc = tmp.getContext('2d');
+    tc.scale(dpr, dpr);
+    tc.fillStyle = '#fff';
+    tc.save();
+    tc.translate(cx, cy);
+    tc.rotate(tilt);
+    tc.translate(-cx, -cy);
+    tc.beginPath();
     if (isWaxing) {
-      ctx.arc(cx, cy, r + 4, -Math.PI / 2, Math.PI / 2, true);
-      ctx.ellipse(cx, cy, tw, r + 4, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+      tc.arc(cx, cy, r + 2, -Math.PI / 2, Math.PI / 2, false);
+      tc.ellipse(cx, cy, tw, r + 2, 0, Math.PI / 2, -Math.PI / 2, frac <= 0.5);
     } else {
-      ctx.arc(cx, cy, r + 4, Math.PI / 2, -Math.PI / 2, true);
-      ctx.ellipse(cx, cy, tw, r + 4, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
+      tc.arc(cx, cy, r + 2, Math.PI / 2, -Math.PI / 2, false);
+      tc.ellipse(cx, cy, tw, r + 2, 0, -Math.PI / 2, Math.PI / 2, frac >= 0.5);
     }
-    ctx.closePath();
-    ctx.fillStyle = '#000';
-    ctx.fill();
+    tc.closePath();
+    tc.fill();
+    tc.restore();
 
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.restore();
-
-    // SOFT TERMINATOR: gradient fade along the terminator edge
-    // This makes the boundary between lit and dark smooth, not a hard cut
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tilt);
-    // Gradient perpendicular to terminator direction
-    const fadeWidth = 6; // pixels of fade
-    const tX = isWaxing ? tw : -tw;
-    const gradX1 = tX - fadeWidth * (isWaxing ? 1 : -1);
-    const gradX2 = tX + fadeWidth * (isWaxing ? 1 : -1);
-    const fade = ctx.createLinearGradient(gradX1, 0, gradX2, 0);
-    fade.addColorStop(0, 'rgba(0,0,0,0)');
-    fade.addColorStop(1, 'rgba(0,0,0,0.25)');
-    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fillStyle = fade;
-    ctx.fill();
-    ctx.restore();
-
-  } else if (frac <= 0.003) {
-    // New moon: erase everything
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2); ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.restore();
+    // Draw the temp canvas onto mask WITH blur — this actually applies the blur
+    try { mc.filter = 'blur(20px)'; } catch (_) {}
+    mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+    mc.filter = 'none';
   }
 
-  // STEP 3: Earthshine — very faint outline of the full disc on the dark side
-  // Drawn AFTER erase so it shows on the transparent area
-  if (frac > 0.01 && frac < 0.99) {
-    ctx.beginPath(); ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(120,140,170,0.07)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+  // --- MOON CANVAS ---
+  const off = document.createElement('canvas');
+  off.width = size * dpr; off.height = size * dpr;
+  const oc = off.getContext('2d');
+  oc.scale(dpr, dpr);
+
+  // 1) Draw moon photo clipped to disc
+  oc.save();
+  oc.beginPath(); oc.arc(cx, cy, r - 0.5, 0, Math.PI * 2); oc.clip();
+  try { oc.filter = 'blur(0.4px)'; } catch (_) {}
+  if (_moonImgLoaded && _moonImg) {
+    const s = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
+    const sx = (_moonImg.naturalWidth - s) / 2;
+    const sy = (_moonImg.naturalHeight - s) / 2;
+    const pad = 18;
+    oc.drawImage(_moonImg, sx, sy, s, s, cx - r - pad, cy - r - pad, (r + pad) * 2, (r + pad) * 2);
+  } else {
+    const g = oc.createRadialGradient(cx - r * 0.15, cy - r * 0.15, 0, cx, cy, r);
+    g.addColorStop(0, '#c0c0bc'); g.addColorStop(0.6, '#a0a09c'); g.addColorStop(1, '#70706c');
+    oc.fillStyle = g;
+    oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.fill();
   }
+  oc.filter = 'none';
+
+  // 2) Time-of-day tint
+  if (sunAlt < -12) {
+    oc.fillStyle = 'rgba(220,200,150,0.10)';
+  } else if (sunAlt < 0) {
+    oc.fillStyle = `rgba(215,195,145,${(0.10 - ((sunAlt + 12) / 12) * 0.04).toFixed(3)})`;
+  } else {
+    oc.fillStyle = 'rgba(230,235,245,0.15)';
+  }
+  oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.fill();
+
+  // 3) Subtle limb darkening
+  const limb = oc.createRadialGradient(cx, cy, r * 0.6, cx, cy, r - 1);
+  limb.addColorStop(0, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.9, 'rgba(0,0,0,0)');
+  limb.addColorStop(1, 'rgba(0,0,0,0.12)');
+  oc.fillStyle = limb;
+  oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.fill();
+  oc.restore();
+
+  // 4) Apply alpha mask — destination-in keeps only where mask is white
+  if (frac > 0.005 && frac < 0.995) {
+    oc.save();
+    oc.globalCompositeOperation = 'destination-in';
+    oc.drawImage(mask, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+    oc.globalCompositeOperation = 'source-over';
+    oc.restore();
+  }
+
+  // 5) Lit-side glow behind (destination-over)
+  if (frac > 0.01 && frac < 0.995) {
+    oc.save();
+    oc.globalCompositeOperation = 'destination-over';
+    oc.translate(cx, cy);
+    oc.rotate(tilt);
+    const gx = isWaxing ? r * 0.15 : -r * 0.15;
+    const gr = r * 1.25;
+    const glow = oc.createRadialGradient(gx, 0, r * 0.5, gx, 0, gr);
+    if (sunAlt < -6) {
+      glow.addColorStop(0, 'rgba(220,200,160,0.10)');
+      glow.addColorStop(1, 'rgba(220,200,160,0)');
+    } else {
+      glow.addColorStop(0, 'rgba(210,215,230,0.07)');
+      glow.addColorStop(1, 'rgba(210,215,230,0)');
+    }
+    oc.fillStyle = glow;
+    oc.beginPath(); oc.arc(0, 0, gr, 0, Math.PI * 2); oc.fill();
+    oc.globalCompositeOperation = 'source-over';
+    oc.restore();
+  }
+
+  // 6) Composite to main canvas
+  ctx.drawImage(off, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
 }
 
 // Old texture functions removed — using NASA photo + canvas phase mask
