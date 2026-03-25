@@ -16,7 +16,7 @@ const state = {
   lat: null, lng: null, heading: null,
   compassAvailable: false,
   moonData: null, landmarks: [], locationName: '',
-  cloudCover: null, nightMode: false, updateTimer: null,
+  cloudCover: null, precipitation: 0, nightMode: false, updateTimer: null,
   currentTab: 'home'
 };
 
@@ -429,13 +429,18 @@ async function fetchLocationName() {
 
 async function fetchCloudCover() {
   const resp = await fetch(
-    `${CONFIG.openMeteoApi}?latitude=${state.lat}&longitude=${state.lng}&hourly=cloud_cover&timezone=auto&forecast_days=1`
+    `${CONFIG.openMeteoApi}?latitude=${state.lat}&longitude=${state.lng}&hourly=cloud_cover,precipitation&current=precipitation,rain,cloud_cover&timezone=auto&forecast_days=1`
   );
   if (!resp.ok) return null;
   const data = await resp.json();
   const h = data.hourly;
-  if (!h?.cloud_cover) return null;
-  return h.cloud_cover[new Date().getHours()] ?? null;
+  const cur = data.current;
+  // Use current values if available, fallback to hourly
+  const cc = cur?.cloud_cover ?? h?.cloud_cover?.[new Date().getHours()] ?? null;
+  const precip = cur?.precipitation ?? cur?.rain ?? h?.precipitation?.[new Date().getHours()] ?? 0;
+  state.precipitation = precip;
+  updateWeatherEffects();
+  return cc;
 }
 
 // ============================
@@ -822,7 +827,8 @@ function renderMoonPhase() {
     tc.fill();
     tc.restore();
 
-    // Draw the temp canvas onto mask WITH blur — this actually applies the blur
+    // Blur the mask for soft terminator
+    // canvas.filter works on Chrome/Firefox/desktop Safari — on iOS Safari it's a no-op (sharp terminator)
     try { mc.filter = 'blur(20px)'; } catch (_) {}
     mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
     mc.filter = 'none';
@@ -1211,7 +1217,7 @@ function updateSky() {
   }
 
   // Overcast desaturates colors and dims stars
-  const desatAmt = cloudFactor * 0.4; // up to 40% desaturation
+  const desatAmt = cloudFactor * 0.7; // up to 70% desaturation — overcast = grey sky
   const finalTop = desaturateColor(colors.top, desatAmt);
   const finalMid = desaturateColor(colors.mid, desatAmt);
   const finalBottom = desaturateColor(colors.bottom, desatAmt);
@@ -1219,9 +1225,9 @@ function updateSky() {
   // Stars hidden by clouds
   starOpacity = starOpacity * Math.max(0, 1 - cloudFactor);
 
-  // Cloud opacity: higher cloud cover = more visible clouds
-  // Scale range: 0 at 0% cover, 1 at 100%
-  const cloudOpacity = cloudFactor;
+  // Cloud opacity: ramp up quickly so overcast looks overcast
+  // 0 at 0%, 0.5 at 40%, 1.0 at 70%+
+  const cloudOpacity = Math.min(1, cloudFactor / 0.7);
 
   // Apply CSS custom properties
   el.style.setProperty('--sky-top', finalTop);
@@ -1229,6 +1235,33 @@ function updateSky() {
   el.style.setProperty('--sky-bottom', finalBottom);
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
   el.style.setProperty('--cloud-opacity', cloudOpacity.toFixed(3));
+}
+
+// Weather effects: rain + enhanced clouds based on real data
+function updateWeatherEffects() {
+  const el = $('sky-bg');
+  if (!el) return;
+  const precip = state.precipitation || 0;
+  const cloud = state.cloudCover ?? 20;
+
+  // Rain layer
+  let rainEl = document.getElementById('rain-layer');
+  if (precip > 0.1) {
+    if (!rainEl) {
+      rainEl = document.createElement('div');
+      rainEl.id = 'rain-layer';
+      rainEl.className = 'rain-layer';
+      el.appendChild(rainEl);
+    }
+    // Intensity: light (< 1mm), moderate (1-4mm), heavy (4+mm)
+    const intensity = precip < 1 ? 'light' : precip < 4 ? 'moderate' : 'heavy';
+    rainEl.className = `rain-layer rain-${intensity}`;
+    rainEl.style.opacity = '1';
+  } else if (rainEl) {
+    rainEl.style.opacity = '0';
+  }
+
+  // Cloud opacity already set by updateSky — don't override here
 }
 
 // Compat shim — old code may call drawSkyBackground

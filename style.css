@@ -244,6 +244,91 @@ body {
   to   { transform: translateX(calc(100vw + 350px)); }
 }
 
+/* ---- Rain Animation ---- */
+.rain-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 3s ease;
+  overflow: hidden;
+}
+
+.rain-layer::before,
+.rain-layer::after {
+  content: '';
+  position: absolute;
+  inset: -20% -10%;
+  background-image:
+    linear-gradient(transparent 92%, rgba(200,210,230,0.25) 92%, rgba(200,210,230,0.05) 100%);
+  background-size: 1px 22px;
+  animation: rain-fall 0.7s linear infinite;
+}
+
+.rain-layer::after {
+  background-size: 1.5px 28px;
+  animation-duration: 0.9s;
+  animation-delay: 0.15s;
+  opacity: 0.6;
+}
+
+/* Light rain: sparse, gentle */
+.rain-light::before,
+.rain-light::after {
+  background-size: 1px 30px;
+  opacity: 0.3;
+  animation-duration: 1s;
+}
+.rain-light::after { animation-duration: 1.3s; opacity: 0.2; }
+
+/* Moderate rain */
+.rain-moderate::before { opacity: 0.5; }
+.rain-moderate::after { opacity: 0.35; }
+
+/* Heavy rain: dense, fast */
+.rain-heavy::before {
+  background-size: 1.5px 18px;
+  animation-duration: 0.5s;
+  opacity: 0.7;
+}
+.rain-heavy::after {
+  background-size: 2px 15px;
+  animation-duration: 0.4s;
+  opacity: 0.5;
+}
+
+@keyframes rain-fall {
+  from { transform: translateY(-22px); }
+  to   { transform: translateY(22px); }
+}
+
+/* Enhanced clouds when overcast — denser, more layers */
+.sky-cloud.c1 {
+  background: radial-gradient(ellipse at center,
+    rgba(255,255,255,0.12) 0%,
+    rgba(255,255,255,0.04) 50%,
+    transparent 100%);
+}
+.sky-cloud.c2 {
+  background: radial-gradient(ellipse at center,
+    rgba(255,255,255,0.09) 0%,
+    rgba(255,255,255,0.03) 50%,
+    transparent 100%);
+}
+.sky-cloud.c3 {
+  background: radial-gradient(ellipse at center,
+    rgba(255,255,255,0.14) 0%,
+    rgba(255,255,255,0.05) 45%,
+    transparent 100%);
+}
+.sky-cloud.c4 {
+  background: radial-gradient(ellipse at center,
+    rgba(255,255,255,0.10) 0%,
+    rgba(255,255,255,0.03) 50%,
+    transparent 100%);
+}
+
 /* ---- App Shell ---- */
 #app {
   position: relative;
