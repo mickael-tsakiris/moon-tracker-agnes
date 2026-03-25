@@ -273,7 +273,7 @@ async function fetchLandmarks() {
 
   // Strategy 1: Street names in 12 directions, VERY close (100m) — what you can actually see
   const directions = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
-  const distanceM = 100; // 100m — visible from your window
+  const distanceM = 60; // 60m — what you can see from your window
   const toRad = Math.PI / 180;
 
   const streetPromises = directions.map(async (az) => {
@@ -327,8 +327,8 @@ async function fetchLandmarks() {
 
 // Lightweight Overpass query — big landmarks with short timeout
 async function fetchOverpassPOIs() {
-  // Progressive search: try close first, expand if nothing found
-  const radii = [150, 350, 600];
+  // Progressive search: very close first, expand only if needed
+  const radii = [80, 150, 300];
   for (const r of radii) {
     const query = `[out:json][timeout:8];(
       node["tourism"="attraction"](around:${r},${state.lat},${state.lng});
@@ -337,7 +337,7 @@ async function fetchOverpassPOIs() {
       node["amenity"="place_of_worship"](around:${r},${state.lat},${state.lng});
       node["railway"="station"](around:${r},${state.lat},${state.lng});
       node["leisure"="park"]["name"](around:${r},${state.lat},${state.lng});
-      node["shop"]["name"](around:${Math.min(r, 200)},${state.lat},${state.lng});
+      node["shop"]["name"](around:${Math.min(r, 100)},${state.lat},${state.lng});
     );out 15;`;
 
     try {
@@ -361,15 +361,15 @@ async function fetchOverpassPOIs() {
           distance: haversine(state.lat, state.lng, el.lat, el.lon)
         }));
       if (results.length >= 2) return results; // Enough landmarks, stop expanding
-      if (results.length > 0 && r >= 350) return results; // Some results at medium range, good enough
+      if (results.length > 0 && r >= 150) return results; // Some results at close range, good enough
     } catch (e) { continue; }
   }
   return []; // Nothing found at any radius
 }
 
-// Nearby shops, cafes, pharmacies — within 250m (what you can see/walk to)
+// Nearby shops, cafes, pharmacies — within 100m (what you can actually see)
 async function fetchOverpassNearby() {
-  const r = 200;
+  const r = 100;
   const query = `[out:json][timeout:8];(
     node["amenity"="cafe"](around:${r},${state.lat},${state.lng});
     node["amenity"="pharmacy"](around:${r},${state.lat},${state.lng});
@@ -469,7 +469,7 @@ function generateMainDescription() {
   const moonStreet = findStreetInDirection(m.azimuth);
   // Find nearest POI (shop, cafe, etc.) aligned with moon
   const nearPOI = state.landmarks
-    .filter(l => !l.isStreet && l.distance < 300)
+    .filter(l => !l.isStreet && l.distance < 150)
     .sort((a, b) => a.moonAbsDiff - b.moonAbsDiff)[0];
   const nearPOIAligned = nearPOI && nearPOI.moonAbsDiff < 25;
 
@@ -505,7 +505,7 @@ function generateMainDescription() {
   } else {
     // Fallback: use any available reference
     const anyStreet = state.landmarks.find(l => l.isStreet);
-    const anyPOI = state.landmarks.find(l => !l.isStreet && l.distance < 500);
+    const anyPOI = state.landmarks.find(l => !l.isStreet && l.distance < 200);
 
     if (anyStreet) {
       const streetName = fmtStreetName(anyStreet.name);
