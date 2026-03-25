@@ -192,9 +192,9 @@ body {
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
-  /* Fade edges so cloud blends into sky — no hard rectangle */
-  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
-  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  /* Fade only the very edges — keep cloud body visible */
+  -webkit-mask-image: radial-gradient(ellipse at center, black 60%, transparent 95%);
+  mask-image: radial-gradient(ellipse at center, black 60%, transparent 95%);
 }
 
 .sky-cloud.c1 {
@@ -218,22 +218,22 @@ body {
   animation: sway-cloud-4 40s ease-in-out infinite alternate;
 }
 
-/* Cloud sway: gentle horizontal oscillation — always on screen */
+/* Cloud sway: visible horizontal drift — subtle but perceptible */
 @keyframes sway-cloud-1 {
   from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(80px) translateY(8px); }
+  to   { transform: translateX(120px) translateY(12px); }
 }
 @keyframes sway-cloud-2 {
   from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(-60px) translateY(5px); }
+  to   { transform: translateX(-100px) translateY(8px); }
 }
 @keyframes sway-cloud-3 {
   from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(100px) translateY(-6px); }
+  to   { transform: translateX(140px) translateY(-10px); }
 }
 @keyframes sway-cloud-4 {
   from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(-70px) translateY(4px); }
+  to   { transform: translateX(-110px) translateY(6px); }
 }
 
 /* ---- Rain Animation ---- */
