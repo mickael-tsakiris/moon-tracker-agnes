@@ -94,17 +94,40 @@ function generateMessage(moon, weather) {
   const phase = moon.phaseName;
   const meteo = weatherText(weather.weatherCode);
 
-  let msg = `Agnès, lève la tête !`;
+  // La rue Boissy d'Anglas va nord-sud.
+  // En sortant du 33 (Cité Rétiro), Agnes est face à la rue.
+  // Le nord (Fg St-Honoré) est à sa gauche, le sud (Concorde) à sa droite.
+  // On formule comme si on lui parlait à la porte.
 
-  if (moon.altitude > 40) {
-    // Lune haute — pas besoin de direction horizontale
-    msg += ` La Lune est ${alt}, lève bien les yeux.`;
-  } else if (moon.altitude > 5) {
-    // Lune à mi-hauteur ou basse — la direction compte
-    msg += ` La Lune est ${alt}, ${landmark.name}.`;
-  } else {
-    // Lune très basse — prévenir que les immeubles peuvent gêner
-    msg += ` La Lune est ${alt}, ${landmark.name}. Elle est peut-être cachée par les immeubles.`;
+  const az = moon.azimuth;
+
+  // Déterminer droite/gauche par rapport à la sortie (face ~est, azimut ~90°)
+  // La porte du 33 donne côté est de la rue. En sortant, Agnes fait face à l'est.
+  let side;
+  if (az >= 350 || az < 10) side = 'devant toi légèrement à gauche';
+  else if (az >= 10 && az < 80) side = 'sur ta gauche';
+  else if (az >= 80 && az < 100) side = 'droit devant toi';
+  else if (az >= 100 && az < 170) side = 'sur ta droite';
+  else if (az >= 170 && az < 190) side = 'derrière toi vers la Concorde';
+  else if (az >= 190 && az < 260) side = 'dans ton dos à droite';
+  else if (az >= 260 && az < 280) side = 'dans ton dos';
+  else side = 'dans ton dos à gauche';
+
+  let heightHint;
+  if (moon.altitude > 60) heightHint = 'bien en hauteur';
+  else if (moon.altitude > 40) heightHint = 'assez haut';
+  else if (moon.altitude > 20) heightHint = 'à mi-hauteur';
+  else if (moon.altitude > 5) heightHint = 'assez bas';
+  else heightHint = 'très bas sur l\'horizon';
+
+  let msg = `Agnès ! En sortant du Rétiro, regarde ${heightHint} ${side}`;
+
+  // Ajouter le repère de rue
+  msg += `, ${landmark.name}.`;
+
+  // Warning immeubles quand la lune est basse
+  if (moon.altitude < 10 && moon.altitude >= 5) {
+    msg += ' Elle est peut-être cachée par les immeubles.';
   }
 
   msg += ` ${phase}, ${meteo}.`;
