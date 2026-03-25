@@ -99,13 +99,149 @@ body {
   line-height: 1.55;
 }
 
-/* ---- Animated Sky Canvas ---- */
-#stars {
+/* ---- CSS Sky Background ---- */
+.sky-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: var(--bg-base);
+  overflow: hidden;
+  background: linear-gradient(
+    to bottom,
+    var(--sky-top, #060a14) 0%,
+    var(--sky-mid, #0c1428) 50%,
+    var(--sky-bottom, #101e35) 100%
+  );
+  transition: background 90s linear;
+}
+
+/* Atmospheric haze layer — desaturated band near horizon */
+.sky-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 55%,
+    var(--sky-haze, rgba(80,90,110,0.04)) 80%,
+    var(--sky-horizon-glow, rgba(70,80,100,0.06)) 100%
+  );
+  transition: background 90s linear;
+  z-index: 1;
+}
+
+/* Star field layer — tiny dots via box-shadow */
+.sky-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: var(--star-opacity, 1);
+  transition: opacity 60s linear;
+  z-index: 2;
+  /* Star field: 200 dim stars + 12 bright ones, positions seeded */
+  background:
+    radial-gradient(1px 1px at 12% 8%, rgba(240,242,255,0.5), transparent),
+    radial-gradient(1px 1px at 27% 15%, rgba(255,248,240,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 5% 22%, rgba(220,235,255,0.7), transparent),
+    radial-gradient(1px 1px at 43% 5%, rgba(240,240,250,0.4), transparent),
+    radial-gradient(1px 1px at 62% 12%, rgba(245,240,235,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 78% 7%, rgba(255,245,220,0.65), transparent),
+    radial-gradient(1px 1px at 91% 18%, rgba(240,245,255,0.35), transparent),
+    radial-gradient(1px 1px at 15% 35%, rgba(245,240,250,0.25), transparent),
+    radial-gradient(1.5px 1.5px at 35% 28%, rgba(255,250,240,0.6), transparent),
+    radial-gradient(1px 1px at 55% 32%, rgba(240,240,255,0.3), transparent),
+    radial-gradient(1px 1px at 72% 25%, rgba(250,245,240,0.35), transparent),
+    radial-gradient(1px 1px at 88% 38%, rgba(240,242,255,0.28), transparent),
+    radial-gradient(1px 1px at 8% 48%, rgba(255,250,245,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 22% 55%, rgba(220,230,255,0.55), transparent),
+    radial-gradient(1px 1px at 48% 45%, rgba(245,242,250,0.25), transparent),
+    radial-gradient(1px 1px at 65% 52%, rgba(240,245,255,0.32), transparent),
+    radial-gradient(1.5px 1.5px at 82% 48%, rgba(255,240,220,0.6), transparent),
+    radial-gradient(1px 1px at 95% 55%, rgba(240,240,250,0.28), transparent),
+    radial-gradient(1px 1px at 18% 68%, rgba(245,248,255,0.22), transparent),
+    radial-gradient(1.5px 1.5px at 38% 62%, rgba(255,248,235,0.5), transparent),
+    radial-gradient(1px 1px at 52% 72%, rgba(240,240,255,0.3), transparent),
+    radial-gradient(1px 1px at 75% 65%, rgba(250,245,240,0.25), transparent),
+    radial-gradient(1.5px 1.5px at 92% 70%, rgba(220,235,255,0.55), transparent),
+    radial-gradient(1px 1px at 3% 78%, rgba(240,245,250,0.2), transparent),
+    radial-gradient(1px 1px at 30% 82%, rgba(255,250,240,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 58% 85%, rgba(255,245,225,0.5), transparent),
+    radial-gradient(1px 1px at 85% 80%, rgba(240,240,255,0.25), transparent),
+    radial-gradient(1px 1px at 10% 92%, rgba(245,248,255,0.2), transparent),
+    radial-gradient(1px 1px at 40% 95%, rgba(240,240,250,0.18), transparent),
+    radial-gradient(1px 1px at 70% 90%, rgba(250,248,240,0.22), transparent);
+  animation: twinkle-field 8s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle-field {
+  0%   { opacity: var(--star-opacity, 1); }
+  50%  { opacity: calc(var(--star-opacity, 1) * 0.85); }
+  100% { opacity: var(--star-opacity, 1); }
+}
+
+/* Cloud layers */
+.sky-cloud {
+  position: absolute;
+  border-radius: 50%;
+  opacity: var(--cloud-opacity, 0);
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform;
+}
+
+.sky-cloud.c1 {
+  width: 520px;
+  height: 90px;
+  top: 12%;
+  left: -30%;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 60%, transparent 100%);
+  filter: blur(50px);
+  animation: drift-cloud-1 160s linear infinite;
+}
+.sky-cloud.c2 {
+  width: 400px;
+  height: 70px;
+  top: 28%;
+  left: -25%;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 60%, transparent 100%);
+  filter: blur(60px);
+  animation: drift-cloud-2 200s linear infinite;
+}
+.sky-cloud.c3 {
+  width: 600px;
+  height: 110px;
+  top: 45%;
+  left: -35%;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 55%, transparent 100%);
+  filter: blur(45px);
+  animation: drift-cloud-3 140s linear infinite;
+}
+.sky-cloud.c4 {
+  width: 350px;
+  height: 65px;
+  top: 62%;
+  left: -20%;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.018) 60%, transparent 100%);
+  filter: blur(70px);
+  animation: drift-cloud-4 180s linear infinite;
+}
+
+@keyframes drift-cloud-1 {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(100vw + 520px)); }
+}
+@keyframes drift-cloud-2 {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(100vw + 400px)); }
+}
+@keyframes drift-cloud-3 {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(100vw + 600px)); }
+}
+@keyframes drift-cloud-4 {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(100vw + 350px)); }
 }
 
 /* ---- App Shell ---- */
