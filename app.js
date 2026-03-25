@@ -2023,39 +2023,49 @@ function showNotificationBanner() {
   });
 }
 
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 async function subscribeToPush() {
   if (!('PushManager' in window) || !('serviceWorker' in navigator)) {
-    throw new Error('Push not supported');
+    throw new Error('Push non supporté sur ce navigateur');
   }
 
-  // Check if already subscribed
   if (localStorage.getItem('push-subscribed') === 'true') return;
 
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
-    throw new Error('Notification permission denied');
+    throw new Error('Permission refusée');
   }
 
   const reg = await navigator.serviceWorker.ready;
   let subscription = await reg.pushManager.getSubscription();
 
   if (!subscription) {
-    const key = Uint8Array.from(atob(VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: key
+      applicationServerKey
     });
   }
 
-  // Send subscription to backend
   const resp = await fetch(PUSH_API_URL + '/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(subscription)
+    body: JSON.stringify(subscription.toJSON())
   });
 
   if (resp.ok) {
     localStorage.setItem('push-subscribed', 'true');
-    console.log('Push subscription registered');
+  } else {
+    throw new Error('Serveur: ' + resp.status);
   }
 }
