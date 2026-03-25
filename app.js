@@ -713,6 +713,7 @@ function startCompass() {
 function renderAll() {
   if (!state.moonData) return;
   const m = state.moonData;
+  updateSky(); // refresh sky colors with latest cloud data
 
   const h = new Date().getHours();
   $('greeting').textContent = (h >= 5 && h < 18) ? 'Bonjour Agnès' : 'Bonsoir Agnès';
@@ -869,23 +870,25 @@ function renderMoonPhase() {
     tc.restore();
 
     // Blur the mask for soft terminator
-    // Try canvas context filter first (Chrome/Firefox), fallback to manual box blur (Safari iOS)
-    let blurApplied = false;
-    try {
-      mc.filter = 'blur(20px)';
-      if (mc.filter === 'blur(20px)') {
+    // Safari/WebKit doesn't actually apply canvas context filter even though it accepts the property
+    // Detect by testing if blur actually changes pixel data
+    const isWebKit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\//.test(navigator.userAgent);
+    const useManualBlur = isWebKit || typeof mc.filter === 'undefined';
+
+    if (!useManualBlur) {
+      try {
+        mc.filter = 'blur(20px)';
         mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
         mc.filter = 'none';
-        blurApplied = true;
-      } else {
-        mc.filter = 'none';
+      } catch (_) {
+        // If filter fails, fall through to manual
+        mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+        _boxBlurAlpha(mc, mask.width, mask.height, Math.round(12 * dpr));
       }
-    } catch (_) {}
-
-    if (!blurApplied) {
-      // Safari iOS fallback: manual box blur on alpha channel
+    } else {
+      // Safari / iOS: manual box blur on alpha channel
       mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
-      _boxBlurAlpha(mc, mask.width, mask.height, Math.round(10 * dpr));
+      _boxBlurAlpha(mc, mask.width, mask.height, Math.round(12 * dpr));
     }
   }
 
@@ -1231,8 +1234,8 @@ function updateSky() {
 
   if (sunAlt > 20) {
     // Full day
-    colors = cloudFactor > 0.7
-      ? lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayOvercast, (cloudFactor - 0.7) / 0.3)
+    colors = cloudFactor > 0.4
+      ? lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayOvercast, Math.min(1, (cloudFactor - 0.4) / 0.4))
       : SKY_PRESETS.dayClear;
     starOpacity = 0;
   } else if (sunAlt > 6) {
@@ -1240,8 +1243,8 @@ function updateSky() {
     const t = (sunAlt - 6) / 14; // 0 at 6 deg, 1 at 20 deg
     const h = new Date().getHours();
     const amPreset = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
-    const dayPreset = cloudFactor > 0.7
-      ? lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayOvercast, (cloudFactor - 0.7) / 0.3)
+    const dayPreset = cloudFactor > 0.4
+      ? lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayOvercast, Math.min(1, (cloudFactor - 0.4) / 0.4))
       : SKY_PRESETS.dayClear;
     colors = lerpPreset(amPreset, dayPreset, t);
     starOpacity = 0;
