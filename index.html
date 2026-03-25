@@ -15,6 +15,23 @@
   <link rel="stylesheet" href="style.css?v=34">
 </head>
 <body>
+  <!-- SVG filter for procedural cloud shapes -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <filter id="cloud-shape">
+        <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="5" seed="2" result="noise"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="120"/>
+      </filter>
+      <filter id="cloud-shape-2">
+        <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="4" seed="7" result="noise"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="100"/>
+      </filter>
+      <filter id="cloud-shape-3">
+        <feTurbulence type="fractalNoise" baseFrequency="0.010" numOctaves="5" seed="13" result="noise"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="140"/>
+      </filter>
+    </defs>
+  </svg>
   <div id="sky-bg" class="sky-bg" aria-hidden="true">
     <div class="sky-cloud c1"></div>
     <div class="sky-cloud c2"></div>

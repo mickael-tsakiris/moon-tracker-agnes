@@ -1294,13 +1294,25 @@ function updateSky() {
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
   el.style.setProperty('--cloud-opacity', cloudOpacity.toFixed(3));
 
-  // Cloud color: dark grey when overcast, lighter when clear
-  // Higher cloud cover = darker, more opaque clouds
-  const cAlpha = 0.2 + cloudFactor * 0.4; // 0.2 clear → 0.6 overcast
-  const cAlphaMid = 0.05 + cloudFactor * 0.2;
-  const grey = Math.round(120 + (1 - cloudFactor) * 100); // 120 (dark grey) → 220 (white)
-  el.style.setProperty('--cloud-color', `rgba(${grey},${grey + 5},${grey + 10},${cAlpha.toFixed(2)})`);
-  el.style.setProperty('--cloud-color-mid', `rgba(${grey},${grey + 5},${grey + 10},${cAlphaMid.toFixed(2)})`);
+  // Cloud color: must CONTRAST with sky background
+  // Overcast sky is grey (~100) → clouds must be darker (~50-70) or lighter (~160+)
+  // Night sky is dark (~10-20) → clouds must be lighter (~60-80)
+  const isNightSky = sunAlt < -6;
+  let cGrey, cAlpha;
+  if (isNightSky) {
+    // Night: lighter grey clouds against dark sky
+    cGrey = Math.round(60 + (1 - cloudFactor) * 40); // 60-100
+    cAlpha = 0.3 + cloudFactor * 0.4; // 0.3-0.7
+  } else if (cloudFactor > 0.5) {
+    // Overcast day: DARKER clouds against grey sky for contrast
+    cGrey = Math.round(40 + (1 - cloudFactor) * 30); // 40-70 (much darker than sky ~100)
+    cAlpha = 0.4 + cloudFactor * 0.35; // 0.4-0.75
+  } else {
+    // Clear/partly cloudy day: white/light clouds against blue sky
+    cGrey = Math.round(200 + (1 - cloudFactor) * 40); // 200-240
+    cAlpha = 0.3 + cloudFactor * 0.3; // 0.3-0.6
+  }
+  el.style.setProperty('--cloud-color', `rgba(${cGrey},${cGrey + 3},${cGrey + 5},${cAlpha.toFixed(2)})`);
 }
 
 // Weather effects: rain + enhanced clouds based on real data
