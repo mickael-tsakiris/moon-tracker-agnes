@@ -30,7 +30,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Start CSS sky
   try { updateSky(); setInterval(updateSky, 60000); } catch (e) { console.error('Sky init error:', e); }
 
-  $('btn-start')?.addEventListener('click', startApp);
+  $('btn-start')?.addEventListener('click', () => {
+    // Request push permission on user gesture (required by iOS)
+    subscribeToPush().catch(e => console.log('Push:', e.message));
+    startApp();
+  });
   $('btn-retry')?.addEventListener('click', () => { showScreen('loading'); startApp(); });
   $('btn-night')?.addEventListener('click', toggleNight);
 
@@ -111,8 +115,14 @@ async function startApp() {
 
     state.updateTimer = setInterval(refresh, CONFIG.updateInterval);
 
-    // Step 4: Subscribe to push notifications (non-blocking)
-    subscribeToPush().catch(e => console.log('Push subscription skipped:', e.message));
+    // Step 4: Push notifications
+    if (localStorage.getItem('push-subscribed') === 'true') {
+      // Already subscribed — re-check silently
+      subscribeToPush().catch(e => console.log('Push re-check skipped:', e.message));
+    } else if (!localStorage.getItem('push-dismissed')) {
+      // Show notification banner after 3s (needs user gesture for iOS)
+      setTimeout(showNotificationBanner, 3000);
+    }
 
   } catch (err) {
     console.error('Init error:', err);
@@ -1897,6 +1907,42 @@ document.addEventListener('DOMContentLoaded', initAR);
 
 const VAPID_PUBLIC_KEY = 'BPblSpfMWkRcnITlHzMph5wpW15AN9JgHiVFnv4nQWPwC-cDlBU9-BpKgP-rvLnCaYSJDZfsDGiU1_vgtS47X1s';
 const PUSH_API_URL = 'https://moon-push.mickael-tsakiris.workers.dev'; // Deployed
+
+function showNotificationBanner() {
+  if (!('PushManager' in window) || !('Notification' in window)) return;
+  if (localStorage.getItem('push-subscribed') === 'true') return;
+  if (Notification.permission === 'denied') return;
+
+  const banner = document.createElement('div');
+  banner.id = 'notif-banner';
+  banner.style.cssText = `
+    position:fixed;bottom:80px;left:1rem;right:1rem;z-index:9998;
+    background:rgba(30,40,80,0.95);color:#fff;text-align:center;
+    padding:1rem;border-radius:16px;backdrop-filter:blur(12px);
+    font-size:0.85rem;box-shadow:0 4px 24px rgba(0,0,0,0.4);
+  `;
+  banner.innerHTML = `
+    <div style="margin-bottom:0.6rem">Recevoir une alerte quand la Lune est visible le soir ?</div>
+    <button id="btn-notif-yes" style="
+      background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);
+      padding:0.5rem 1.5rem;border-radius:10px;font-size:0.85rem;cursor:pointer;margin-right:0.5rem;
+    ">Activer</button>
+    <button id="btn-notif-no" style="
+      background:transparent;color:rgba(255,255,255,0.5);border:none;
+      padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;
+    ">Plus tard</button>
+  `;
+  document.body.appendChild(banner);
+
+  $('btn-notif-yes')?.addEventListener('click', () => {
+    banner.remove();
+    subscribeToPush().catch(e => console.log('Push:', e.message));
+  });
+  $('btn-notif-no')?.addEventListener('click', () => {
+    banner.remove();
+    localStorage.setItem('push-dismissed', 'true');
+  });
+}
 
 async function subscribeToPush() {
   if (!('PushManager' in window) || !('serviceWorker' in navigator)) {
