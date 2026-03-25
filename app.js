@@ -327,36 +327,44 @@ async function fetchLandmarks() {
 
 // Lightweight Overpass query — big landmarks with short timeout
 async function fetchOverpassPOIs() {
-  const r = CONFIG.landmarkRadius;
-  const query = `[out:json][timeout:8];(
-    node["tourism"="attraction"](around:${r},${state.lat},${state.lng});
-    node["tourism"="museum"](around:${r},${state.lat},${state.lng});
-    node["historic"="monument"](around:${r},${state.lat},${state.lng});
-    node["amenity"="place_of_worship"](around:${r},${state.lat},${state.lng});
-    node["railway"="station"](around:${r},${state.lat},${state.lng});
-    node["leisure"="park"]["name"](around:${r},${state.lat},${state.lng});
-  );out 15;`;
+  // Progressive search: try close first, expand if nothing found
+  const radii = [150, 350, 600];
+  for (const r of radii) {
+    const query = `[out:json][timeout:8];(
+      node["tourism"="attraction"](around:${r},${state.lat},${state.lng});
+      node["tourism"="museum"](around:${r},${state.lat},${state.lng});
+      node["historic"="monument"](around:${r},${state.lat},${state.lng});
+      node["amenity"="place_of_worship"](around:${r},${state.lat},${state.lng});
+      node["railway"="station"](around:${r},${state.lat},${state.lng});
+      node["leisure"="park"]["name"](around:${r},${state.lat},${state.lng});
+      node["shop"]["name"](around:${Math.min(r, 200)},${state.lat},${state.lng});
+    );out 15;`;
 
-  const resp = await fetch(CONFIG.overpassApi, {
-    method: 'POST',
-    body: `data=${encodeURIComponent(query)}`,
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-  });
-  if (!resp.ok) return [];
-  const data = await resp.json();
-
-  return data.elements
-    .filter(el => el.tags?.name && el.lat && el.lon)
-    .map(el => ({
-      name: el.tags.name,
-      kind: el.tags.railway ? 'station' : el.tags.leisure ? 'parc' : el.tags.amenity ? 'edifice' : el.tags.tourism || 'monument',
-      isStreet: false,
-      isPark: el.tags.leisure === 'park',
-      lat: el.lat,
-      lng: el.lon,
-      bearing: calcBearing(state.lat, state.lng, el.lat, el.lon),
-      distance: haversine(state.lat, state.lng, el.lat, el.lon)
-    }));
+    try {
+      const resp = await fetch(CONFIG.overpassApi, {
+        method: 'POST',
+        body: `data=${encodeURIComponent(query)}`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const results = data.elements
+        .filter(el => el.tags?.name && el.lat && el.lon)
+        .map(el => ({
+          name: el.tags.name,
+          kind: el.tags.railway ? 'station' : el.tags.leisure ? 'parc' : el.tags.amenity ? 'edifice' : el.tags.shop ? 'commerce' : el.tags.tourism || 'monument',
+          isStreet: false,
+          isPark: el.tags.leisure === 'park',
+          lat: el.lat,
+          lng: el.lon,
+          bearing: calcBearing(state.lat, state.lng, el.lat, el.lon),
+          distance: haversine(state.lat, state.lng, el.lat, el.lon)
+        }));
+      if (results.length >= 2) return results; // Enough landmarks, stop expanding
+      if (results.length > 0 && r >= 350) return results; // Some results at medium range, good enough
+    } catch (e) { continue; }
+  }
+  return []; // Nothing found at any radius
 }
 
 // Nearby shops, cafes, pharmacies — within 250m (what you can see/walk to)
@@ -728,107 +736,106 @@ function renderMoonPhase() {
   canvas.style.height = size + 'px';
   ctx.scale(dpr, dpr);
 
-  const cx = size / 2, cy = size / 2, r = 95;
+  const cx = size / 2, cy = size / 2, r = 92;
   const { phaseAngle, terminatorTilt } = state.moonData;
   const frac = state.moonData.fraction;
   const tilt = (terminatorTilt || 0) * 0.35;
   const isWaxing = phaseAngle < 180;
   const tw = r * Math.abs(2 * frac - 1);
 
-  // Entire canvas transparent first
   ctx.clearRect(0, 0, size, size);
 
-  // ---- STEP 1: Build the complete moon on an offscreen canvas ----
-  // This avoids ALL anti-aliasing edge artifacts from clipping
-  const offCanvas = document.createElement('canvas');
-  offCanvas.width = size * dpr;
-  offCanvas.height = size * dpr;
-  const oc = offCanvas.getContext('2d');
-  oc.scale(dpr, dpr);
+  // === NEW APPROACH: draw lit moon, then ERASE dark side to transparency ===
+  // Dark side = transparent = sky shows through perfectly. Zero color matching.
 
-  // Draw everything inside a circle clip on offscreen
-  oc.save();
-  oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.clip();
+  // STEP 1: Draw full moon photo clipped to disc
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
 
-  // Moon photo
   if (_moonImgLoaded && _moonImg) {
     const imgSize = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
     const sx = (_moonImg.naturalWidth - imgSize) / 2;
     const sy = (_moonImg.naturalHeight - imgSize) / 2;
-    oc.drawImage(_moonImg, sx, sy, imgSize, imgSize, cx - r, cy - r, r * 2, r * 2);
+    // Draw slightly larger than clip to avoid edge fringe from image background
+    ctx.drawImage(_moonImg, sx, sy, imgSize, imgSize, cx - r - 2, cy - r - 2, (r + 2) * 2, (r + 2) * 2);
   } else {
-    const fb = oc.createRadialGradient(cx - r * 0.15, cy - r * 0.15, 0, cx, cy, r);
+    const fb = ctx.createRadialGradient(cx - r * 0.15, cy - r * 0.15, 0, cx, cy, r);
     fb.addColorStop(0, '#c0c0bc'); fb.addColorStop(0.6, '#a0a09c'); fb.addColorStop(1, '#70706c');
-    oc.fillStyle = fb;
-    oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.fill();
+    ctx.fillStyle = fb;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Limb darkening
-  const limb = oc.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
-  limb.addColorStop(0, 'rgba(0,0,0,0)'); limb.addColorStop(0.8, 'rgba(0,0,0,0)');
-  limb.addColorStop(0.95, 'rgba(0,0,0,0.15)'); limb.addColorStop(1, 'rgba(0,0,0,0.35)');
-  oc.fillStyle = limb;
-  oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.fill();
+  // Limb darkening on lit portions
+  const limb = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
+  limb.addColorStop(0, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.85, 'rgba(0,0,0,0)');
+  limb.addColorStop(0.96, 'rgba(0,0,0,0.12)');
+  limb.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = limb;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
 
-  // ---- STEP 2: Phase shadow directly on offscreen (no second canvas) ----
+  ctx.restore(); // pop disc clip
+
+  // STEP 2: ERASE the dark side completely (destination-out)
   if (frac < 0.995 && frac > 0.003) {
-    oc.save();
-    oc.translate(cx, cy);
-    oc.rotate(tilt);
-    oc.translate(-cx, -cy);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    ctx.translate(-cx, -cy);
 
-    // Shadow path
-    oc.beginPath();
+    // Dark side eraser path — slightly oversized to clean edges
+    ctx.beginPath();
     if (isWaxing) {
-      oc.arc(cx, cy, r + 1, -Math.PI / 2, Math.PI / 2, true);
-      oc.ellipse(cx, cy, tw, r + 1, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
+      ctx.arc(cx, cy, r + 4, -Math.PI / 2, Math.PI / 2, true);
+      ctx.ellipse(cx, cy, tw, r + 4, 0, Math.PI / 2, -Math.PI / 2, frac > 0.5);
     } else {
-      oc.arc(cx, cy, r + 1, Math.PI / 2, -Math.PI / 2, true);
-      oc.ellipse(cx, cy, tw, r + 1, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
+      ctx.arc(cx, cy, r + 4, Math.PI / 2, -Math.PI / 2, true);
+      ctx.ellipse(cx, cy, tw, r + 4, 0, -Math.PI / 2, Math.PI / 2, frac < 0.5);
     }
-    oc.closePath();
+    ctx.closePath();
+    ctx.fillStyle = '#000';
+    ctx.fill();
 
-    // Get sky colors for shadow to match background perfectly
-    const skyEl = $('sky-bg');
-    const skyTop = skyEl ? getComputedStyle(skyEl).getPropertyValue('--sky-top').trim() : '#0a0e1a';
-    const skyMid = skyEl ? getComputedStyle(skyEl).getPropertyValue('--sky-mid').trim() : '#101828';
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
 
-    // Shadow = sky color at full opacity so it blends seamlessly
-    oc.fillStyle = skyMid || '#101828';
-    oc.fill();
-
-    // Earthshine: extremely subtle blue glow on dark side
-    oc.fillStyle = 'rgba(30,40,70,0.08)';
-    oc.fill();
-
-    oc.restore();
-
-    // Soft terminator: draw a thin gradient strip along the terminator edge
-    oc.save();
-    oc.translate(cx, cy);
-    oc.rotate(tilt);
-    // Gradient strip perpendicular to terminator
+    // SOFT TERMINATOR: gradient fade along the terminator edge
+    // This makes the boundary between lit and dark smooth, not a hard cut
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tilt);
+    // Gradient perpendicular to terminator direction
+    const fadeWidth = 6; // pixels of fade
     const tX = isWaxing ? tw : -tw;
-    const stripGrad = oc.createLinearGradient(tX - 8, 0, tX + 8, 0);
-    stripGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    stripGrad.addColorStop(0.35, 'rgba(0,0,0,0.15)');
-    stripGrad.addColorStop(0.65, 'rgba(0,0,0,0.15)');
-    stripGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    oc.fillStyle = stripGrad;
-    oc.beginPath(); oc.arc(0, 0, r, 0, Math.PI * 2); oc.fill();
-    oc.restore();
+    const gradX1 = tX - fadeWidth * (isWaxing ? 1 : -1);
+    const gradX2 = tX + fadeWidth * (isWaxing ? 1 : -1);
+    const fade = ctx.createLinearGradient(gradX1, 0, gradX2, 0);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(1, 'rgba(0,0,0,0.25)');
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = fade;
+    ctx.fill();
+    ctx.restore();
 
   } else if (frac <= 0.003) {
-    const skyMid = $('sky-bg') ? getComputedStyle($('sky-bg')).getPropertyValue('--sky-mid').trim() : '#101828';
-    oc.fillStyle = skyMid || '#101828';
-    oc.beginPath(); oc.arc(cx, cy, r, 0, Math.PI * 2); oc.fill();
+    // New moon: erase everything
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
   }
 
-  oc.restore(); // pop clip
-
-  // ---- STEP 3: Stamp the complete moon onto the main canvas ----
-  // No clipping on main canvas = no anti-aliasing white fringe
-  ctx.drawImage(offCanvas, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+  // STEP 3: Earthshine — very faint outline of the full disc on the dark side
+  // Drawn AFTER erase so it shows on the transparent area
+  if (frac > 0.01 && frac < 0.99) {
+    ctx.beginPath(); ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(120,140,170,0.07)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 }
 
 // Old texture functions removed — using NASA photo + canvas phase mask
