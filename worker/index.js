@@ -94,28 +94,24 @@ function generateMessage(moon, weather) {
   const phase = moon.phaseName;
   const meteo = weatherText(weather.weatherCode);
 
-  let msg = `Agnès, lève la tête ! La Lune est ${alt}`;
+  let msg = `Agnès, lève la tête !`;
 
-  if (landmark.angleDiff < 25) {
-    msg += `, du côté de ${landmark.name}`;
+  if (landmark.angleDiff < 15) {
+    // Très proche d'un repère
+    msg += ` Regarde vers ${landmark.name}, la Lune est ${alt}.`;
+  } else if (landmark.secondDiff < 30) {
+    // Entre deux repères
+    msg += ` La Lune est ${alt}, entre ${landmark.name} et ${landmark.second.name}.`;
   } else {
-    msg += `, entre ${landmark.name}`;
-    // Find next landmark
-    const nextBearing = (landmark.bearing + 30) % 360;
-    const next = findNearestLandmark(nextBearing);
-    if (next.name !== landmark.name) {
-      msg += ` et ${next.name}`;
-    }
+    msg += ` La Lune est ${alt}, du côté de ${landmark.name}.`;
   }
-  msg += '.';
 
-  // Low altitude warning
+  // Low altitude warning — immeubles haussmanniens ~25m
   if (moon.altitude < 10 && moon.altitude >= 5) {
     msg += ' Elle est basse, peut-être cachée par les immeubles.';
   }
 
   msg += ` ${phase}, ${meteo}.`;
-
   return msg;
 }
 
