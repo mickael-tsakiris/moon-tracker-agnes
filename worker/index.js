@@ -96,19 +96,15 @@ function generateMessage(moon, weather) {
 
   let msg = `Agnès, lève la tête !`;
 
-  if (landmark.angleDiff < 15) {
-    // Très proche d'un repère
-    msg += ` Regarde vers ${landmark.name}, la Lune est ${alt}.`;
-  } else if (landmark.secondDiff < 30) {
-    // Entre deux repères
-    msg += ` La Lune est ${alt}, entre ${landmark.name} et ${landmark.second.name}.`;
+  if (moon.altitude > 40) {
+    // Lune haute — pas besoin de direction horizontale
+    msg += ` La Lune est ${alt}, lève bien les yeux.`;
+  } else if (moon.altitude > 5) {
+    // Lune à mi-hauteur ou basse — la direction compte
+    msg += ` La Lune est ${alt}, ${landmark.name}.`;
   } else {
-    msg += ` La Lune est ${alt}, du côté de ${landmark.name}.`;
-  }
-
-  // Low altitude warning — immeubles haussmanniens ~25m
-  if (moon.altitude < 10 && moon.altitude >= 5) {
-    msg += ' Elle est basse, peut-être cachée par les immeubles.';
+    // Lune très basse — prévenir que les immeubles peuvent gêner
+    msg += ` La Lune est ${alt}, ${landmark.name}. Elle est peut-être cachée par les immeubles.`;
   }
 
   msg += ` ${phase}, ${meteo}.`;

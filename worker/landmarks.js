@@ -1,6 +1,7 @@
-// Repères physiques pré-calculés autour du 33 rue Boissy d'Anglas, Paris 8e
+// Directions visibles DEPUIS LA SORTIE du 33 rue Boissy d'Anglas, Paris 8e
+// Ce sont les directions dans lesquelles Agnes peut REGARDER en sortant,
+// pas des lieux qu'elle peut atteindre à pied.
 // Bearing calculé depuis 48.8688, 2.3208
-// TOUS les repères sont à moins de 200m — rues adjacentes et commerces visibles
 
 export const OBSERVER = {
   lat: 48.8688,
@@ -8,39 +9,30 @@ export const OBSERVER = {
   name: '33 rue Boissy d\'Anglas'
 };
 
-// Repères proches par direction (< 200m du 33 Boissy d'Anglas)
+// La rue Boissy d'Anglas va du nord (Fg St-Honoré) au sud (Concorde).
+// En sortant du 33, Agnes voit :
+// - Au nord : la rue qui remonte vers le Fg St-Honoré
+// - Au sud : la rue qui descend vers la Concorde
+// - Les rues adjacentes et les bâtiments visibles depuis ce point
+
 export const LANDMARKS = [
-  // NORD (~0°) — rue Boissy d'Anglas remonte vers Fg St-Honoré
-  { bearing: 0,   name: 'le haut de la rue Boissy d\'Anglas' },
-  { bearing: 10,  name: 'la rue du Faubourg Saint-Honoré' },
+  // En remontant la rue (nord)
+  { bearing: 5,   name: 'en remontant vers le Faubourg Saint-Honoré' },
 
-  // NORD-EST (~30-60°) — vers rue d'Anjou / rue de Surène
-  { bearing: 35,  name: 'la rue d\'Anjou' },
-  { bearing: 55,  name: 'la rue de Surène' },
+  // Rues qui partent à droite (est/nord-est) depuis Boissy d'Anglas
+  { bearing: 40,  name: 'vers la rue de Surène' },
+  { bearing: 80,  name: 'vers la rue Royale, côté Madeleine' },
 
-  // EST (~90°) — vers la Madeleine
-  { bearing: 75,  name: 'la rue Royale' },
-  { bearing: 95,  name: 'l\'église de la Madeleine' },
+  // En descendant la rue (sud) vers la Concorde
+  { bearing: 140, name: 'en descendant la rue, vers la Concorde' },
+  { bearing: 175, name: 'tout droit vers la place de la Concorde' },
+  { bearing: 200, name: 'vers la Concorde, côté Tuileries' },
 
-  // SUD-EST (~120-150°) — vers rue Saint-Honoré / Concorde
-  { bearing: 120, name: 'la rue Saint-Honoré' },
-  { bearing: 145, name: 'le début de la rue de Rivoli' },
-
-  // SUD (~180°) — Place de la Concorde directement
-  { bearing: 170, name: 'la place de la Concorde' },
-  { bearing: 190, name: 'l\'Obélisque de la Concorde' },
-
-  // SUD-OUEST (~210-240°) — vers le jardin / le pont
-  { bearing: 215, name: 'le jardin des Tuileries' },
-  { bearing: 240, name: 'le bas des Champs-Élysées' },
-
-  // OUEST (~270°) — vers rue du Fg St-Honoré côté ouest
-  { bearing: 265, name: 'la rue du Chevalier de Saint-George' },
-  { bearing: 280, name: 'l\'avenue Gabriel' },
-
-  // NORD-OUEST (~300-340°) — vers avenue Matignon
-  { bearing: 310, name: 'la Cité Rétiro' },
-  { bearing: 340, name: 'l\'avenue Matignon' }
+  // Côté gauche en sortant (ouest)
+  { bearing: 250, name: 'vers la Cité Rétiro' },
+  { bearing: 280, name: 'vers l\'avenue Gabriel' },
+  { bearing: 320, name: 'vers l\'avenue Matignon' },
+  { bearing: 350, name: 'vers le Faubourg Saint-Honoré, côté Élysée' }
 ];
 
 // Trouve le repère le plus proche d'un azimut donné
@@ -55,19 +47,7 @@ export function findNearestLandmark(azimuth) {
       best = lm;
     }
   }
-  // Also find second-nearest for "entre X et Y" phrasing
-  let second = LANDMARKS[0];
-  let secondDiff = 360;
-  for (const lm of LANDMARKS) {
-    if (lm === best) continue;
-    let diff = Math.abs(azimuth - lm.bearing);
-    if (diff > 180) diff = 360 - diff;
-    if (diff < secondDiff) {
-      secondDiff = diff;
-      second = lm;
-    }
-  }
-  return { ...best, angleDiff: bestDiff, second, secondDiff };
+  return { ...best, angleDiff: bestDiff };
 }
 
 // Description d'altitude lisible
