@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moon-tracker-agnes-v33';
+const CACHE_NAME = 'moon-tracker-agnes-v34';
 
 self.addEventListener('install', event => {
   self.skipWaiting(); // Activate immediately
