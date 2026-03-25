@@ -1293,6 +1293,14 @@ function updateSky() {
   el.style.setProperty('--sky-bottom', finalBottom);
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
   el.style.setProperty('--cloud-opacity', cloudOpacity.toFixed(3));
+
+  // Cloud color: dark grey when overcast, lighter when clear
+  // Higher cloud cover = darker, more opaque clouds
+  const cAlpha = 0.2 + cloudFactor * 0.4; // 0.2 clear → 0.6 overcast
+  const cAlphaMid = 0.05 + cloudFactor * 0.2;
+  const grey = Math.round(120 + (1 - cloudFactor) * 100); // 120 (dark grey) → 220 (white)
+  el.style.setProperty('--cloud-color', `rgba(${grey},${grey + 5},${grey + 10},${cAlpha.toFixed(2)})`);
+  el.style.setProperty('--cloud-color-mid', `rgba(${grey},${grey + 5},${grey + 10},${cAlphaMid.toFixed(2)})`);
 }
 
 // Weather effects: rain + enhanced clouds based on real data
