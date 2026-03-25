@@ -106,13 +106,16 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  /* 5-stop gradient for realistic sky depth */
   background: linear-gradient(
     to bottom,
     var(--sky-top, #060a14) 0%,
+    var(--sky-upper, #0a1020) 25%,
     var(--sky-mid, #0c1428) 50%,
+    var(--sky-lower, #0e1830) 75%,
     var(--sky-bottom, #101e35) 100%
   );
-  transition: background 90s linear;
+  transition: all 30s ease;
 }
 
 /* Atmospheric haze layer — desaturated band near horizon */
@@ -180,59 +183,9 @@ body {
   100% { opacity: var(--star-opacity, 1); }
 }
 
-/* Cloud layers — real cloud PNG images with faded edges */
-.sky-cloud {
-  position: absolute;
-  pointer-events: none;
-  z-index: 3;
-  will-change: transform;
-  opacity: var(--cloud-opacity, 0);
-  transition: opacity 5s ease;
-  background-image: url('cloud1.png');
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-position: center;
-  /* No mask — let the PNG's own transparency handle edges */
-}
+/* Cloud layers removed — sky realism handled via gradient stops */
 
-.sky-cloud.c1 {
-  width: 550px; height: 200px;
-  top: 2%; left: -5%;
-  animation: sway-cloud-1 35s ease-in-out infinite alternate;
-}
-.sky-cloud.c2 {
-  width: 450px; height: 170px;
-  top: 22%; left: 30%;
-  animation: sway-cloud-2 45s ease-in-out infinite alternate;
-}
-.sky-cloud.c3 {
-  width: 600px; height: 220px;
-  top: 42%; left: -10%;
-  animation: sway-cloud-3 28s ease-in-out infinite alternate;
-}
-.sky-cloud.c4 {
-  width: 420px; height: 160px;
-  top: 65%; left: 35%;
-  animation: sway-cloud-4 40s ease-in-out infinite alternate;
-}
-
-/* Cloud sway: visible horizontal drift — subtle but perceptible */
-@keyframes sway-cloud-1 {
-  from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(120px) translateY(12px); }
-}
-@keyframes sway-cloud-2 {
-  from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(-100px) translateY(8px); }
-}
-@keyframes sway-cloud-3 {
-  from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(140px) translateY(-10px); }
-}
-@keyframes sway-cloud-4 {
-  from { transform: translateX(0) translateY(0); }
-  to   { transform: translateX(-110px) translateY(6px); }
-}
+/* Cloud keyframes removed — static sky for now */
 
 /* ---- Rain Animation ---- */
 .rain-layer {
@@ -291,32 +244,6 @@ body {
 @keyframes rain-fall {
   from { transform: translateY(-22px); }
   to   { transform: translateY(22px); }
-}
-
-/* Enhanced clouds when overcast — denser, more layers */
-.sky-cloud.c1 {
-  background: radial-gradient(ellipse at center,
-    rgba(255,255,255,0.12) 0%,
-    rgba(255,255,255,0.04) 50%,
-    transparent 100%);
-}
-.sky-cloud.c2 {
-  background: radial-gradient(ellipse at center,
-    rgba(255,255,255,0.09) 0%,
-    rgba(255,255,255,0.03) 50%,
-    transparent 100%);
-}
-.sky-cloud.c3 {
-  background: radial-gradient(ellipse at center,
-    rgba(255,255,255,0.14) 0%,
-    rgba(255,255,255,0.05) 45%,
-    transparent 100%);
-}
-.sky-cloud.c4 {
-  background: radial-gradient(ellipse at center,
-    rgba(255,255,255,0.10) 0%,
-    rgba(255,255,255,0.03) 50%,
-    transparent 100%);
 }
 
 /* ---- App Shell ---- */

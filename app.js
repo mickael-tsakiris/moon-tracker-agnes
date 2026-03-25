@@ -1152,24 +1152,28 @@ function renderLandmarks() {
 // CSS SKY BACKGROUND — sun-altitude driven
 // ============================
 
-// Color presets sampled from real sky photography
+// Color presets — 5 stops (top, upper, mid, lower, bottom) for realistic sky depth
 const SKY_PRESETS = {
-  // Full night: deep navy, subtle blue at horizon
-  night:    { top: '#060a14', mid: '#0c1428', bottom: '#101e35', haze: 'rgba(60,70,90,0.03)', horizonGlow: 'rgba(50,60,80,0.04)' },
-  // Nautical twilight: first hint of deep blue
-  nautical: { top: '#0a1228', mid: '#141e3a', bottom: '#1e2845', haze: 'rgba(70,80,100,0.04)', horizonGlow: 'rgba(60,70,90,0.05)' },
-  // Civil twilight / golden hour: warm horizon, cool zenith
-  civilDawn:  { top: '#1a2a55', mid: '#3a2a50', bottom: '#c05838', haze: 'rgba(180,120,80,0.06)', horizonGlow: 'rgba(200,140,80,0.08)' },
-  civilDusk:  { top: '#1a2040', mid: '#4a2248', bottom: '#b84828', haze: 'rgba(160,100,60,0.06)', horizonGlow: 'rgba(180,110,60,0.08)' },
-  // Low sun (6-20 deg): transition between golden hour and full day
-  lowSunAM: { top: '#2a4a78', mid: '#3a6090', bottom: '#6a98b8', haze: 'rgba(100,130,160,0.05)', horizonGlow: 'rgba(140,160,180,0.06)' },
-  lowSunPM: { top: '#1e3868', mid: '#3a4a78', bottom: '#8a6858', haze: 'rgba(120,110,100,0.05)', horizonGlow: 'rgba(160,130,100,0.06)' },
-  // Full day clear: photographed blue sky
-  dayClear: { top: '#1a3a65', mid: '#3a7aaa', bottom: '#8ac0d8', haze: 'rgba(140,180,210,0.05)', horizonGlow: 'rgba(160,200,220,0.06)' },
-  // Full day overcast: flat grey-blue
-  dayOvercast: { top: '#5a6a78', mid: '#6a7a88', bottom: '#788898', haze: 'rgba(120,130,140,0.04)', horizonGlow: 'rgba(130,140,150,0.05)' },
-  // Dusk deep: purple to near-black
-  duskDeep: { top: '#0a0a18', mid: '#180a28', bottom: '#1a1230', haze: 'rgba(50,40,60,0.04)', horizonGlow: 'rgba(60,40,70,0.05)' }
+  // Full night clear: deep navy, hint of blue at horizon
+  night:        { top: '#050810', upper: '#080e1a', mid: '#0c1428', lower: '#0e1830', bottom: '#121e38' },
+  // Full night overcast: flat dark grey, no blue
+  nightCloud:   { top: '#141618', upper: '#1a1c20', mid: '#222428', lower: '#282a2e', bottom: '#2e3034' },
+  // Nautical twilight
+  nautical:     { top: '#0a1228', upper: '#101830', mid: '#141e3a', lower: '#1a2840', bottom: '#1e2845' },
+  // Civil twilight dawn: warm horizon, cool top
+  civilDawn:    { top: '#1a2a55', upper: '#282848', mid: '#3a2a50', lower: '#804838', bottom: '#c05838' },
+  // Civil twilight dusk
+  civilDusk:    { top: '#1a2040', upper: '#302040', mid: '#4a2248', lower: '#903838', bottom: '#b84828' },
+  // Low sun morning
+  lowSunAM:     { top: '#2a4a78', upper: '#325888', mid: '#3a6090', lower: '#5080a0', bottom: '#6a98b8' },
+  // Low sun evening
+  lowSunPM:     { top: '#1e3868', upper: '#2a4070', mid: '#3a4a78', lower: '#685848', bottom: '#8a6858' },
+  // Full day clear: real blue sky gradient
+  dayClear:     { top: '#1a3a68', upper: '#2a5a8a', mid: '#3a7aaa', lower: '#62a0c4', bottom: '#8ac0d8' },
+  // Full day overcast: photographed grey overcast sky
+  dayOvercast:  { top: '#6a7280', upper: '#727a88', mid: '#7a8290', lower: '#848c98', bottom: '#8e96a2' },
+  // Full day heavy overcast: darker, flatter
+  dayHeavy:     { top: '#545a62', upper: '#5e646c', mid: '#686e76', lower: '#727880', bottom: '#7c828a' }
 };
 
 function lerpColor(a, b, t) {
@@ -1186,7 +1190,9 @@ function lerpColor(a, b, t) {
 function lerpPreset(a, b, t) {
   return {
     top: lerpColor(a.top, b.top, t),
+    upper: lerpColor(a.upper, b.upper, t),
     mid: lerpColor(a.mid, b.mid, t),
+    lower: lerpColor(a.lower, b.lower, t),
     bottom: lerpColor(a.bottom, b.bottom, t)
   };
 }
@@ -1207,9 +1213,9 @@ function updateSky() {
   if (!el) return;
 
   const cloud = state.cloudCover ?? 20;
-  const cloudFactor = Math.min(1, cloud / 100); // 0 = clear, 1 = overcast
+  const cloudFactor = Math.min(1, cloud / 100);
 
-  // Get sun altitude using Astronomy library if position available
+  // Sun altitude
   let sunAlt;
   try {
     if (state.lat != null && state.lng != null && typeof Astronomy !== 'undefined') {
@@ -1220,161 +1226,68 @@ function updateSky() {
       sunAlt = sunHor.altitude;
     }
   } catch (_) {}
-
-  // Fallback: estimate from hour if Astronomy not loaded yet
   if (sunAlt == null) {
     const h = new Date().getHours() + new Date().getMinutes() / 60;
-    // Rough sine-wave approximation, peaks at solar noon (~13h)
     sunAlt = 50 * Math.sin(((h - 6) / 12) * Math.PI);
   }
 
-  // Determine sky colors based on sun altitude
-  let colors;
+  // Select sky preset based on sun altitude
+  let clearColors, cloudColors;
   let starOpacity;
+  const h = new Date().getHours();
 
   if (sunAlt > 20) {
-    // Full day
-    colors = cloudFactor > 0.4
-      ? lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayOvercast, Math.min(1, (cloudFactor - 0.4) / 0.4))
-      : SKY_PRESETS.dayClear;
+    clearColors = SKY_PRESETS.dayClear;
+    cloudColors = cloudFactor > 0.7 ? SKY_PRESETS.dayHeavy : SKY_PRESETS.dayOvercast;
     starOpacity = 0;
   } else if (sunAlt > 6) {
-    // Morning/evening transition: lerp between golden hour and full day
-    const t = (sunAlt - 6) / 14; // 0 at 6 deg, 1 at 20 deg
-    const h = new Date().getHours();
-    const amPreset = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
-    const dayPreset = cloudFactor > 0.4
-      ? lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayOvercast, Math.min(1, (cloudFactor - 0.4) / 0.4))
-      : SKY_PRESETS.dayClear;
-    colors = lerpPreset(amPreset, dayPreset, t);
+    const t = (sunAlt - 6) / 14;
+    const low = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
+    clearColors = lerpPreset(low, SKY_PRESETS.dayClear, t);
+    cloudColors = lerpPreset(low, SKY_PRESETS.dayOvercast, t);
     starOpacity = 0;
   } else if (sunAlt > 0) {
-    // Golden hour / civil twilight: warm horizon, cool top
-    const t = sunAlt / 6; // 0 at horizon, 1 at 6 deg
-    const h = new Date().getHours();
-    const civilPreset = h < 14 ? SKY_PRESETS.civilDawn : SKY_PRESETS.civilDusk;
-    const lowPreset = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
-    colors = lerpPreset(civilPreset, lowPreset, t);
-    starOpacity = Math.max(0, (1 - t) * 0.15); // faint stars near horizon time
+    const t = sunAlt / 6;
+    const civil = h < 14 ? SKY_PRESETS.civilDawn : SKY_PRESETS.civilDusk;
+    const low = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
+    clearColors = lerpPreset(civil, low, t);
+    cloudColors = clearColors; // twilight clouds = same tones
+    starOpacity = Math.max(0, (1 - t) * 0.15);
   } else if (sunAlt > -6) {
-    // Civil twilight: rapid color change
-    const t = (sunAlt + 6) / 6; // 0 at -6, 1 at 0
-    const h = new Date().getHours();
-    const civilPreset = h < 14 ? SKY_PRESETS.civilDawn : SKY_PRESETS.civilDusk;
-    colors = lerpPreset(SKY_PRESETS.nautical, civilPreset, t);
+    const t = (sunAlt + 6) / 6;
+    const civil = h < 14 ? SKY_PRESETS.civilDawn : SKY_PRESETS.civilDusk;
+    clearColors = lerpPreset(SKY_PRESETS.nautical, civil, t);
+    cloudColors = clearColors;
     starOpacity = 1 - t * 0.7;
   } else if (sunAlt > -12) {
-    // Nautical twilight
-    const t = (sunAlt + 12) / 6; // 0 at -12, 1 at -6
-    colors = lerpPreset(SKY_PRESETS.night, SKY_PRESETS.nautical, t);
+    const t = (sunAlt + 12) / 6;
+    clearColors = lerpPreset(SKY_PRESETS.night, SKY_PRESETS.nautical, t);
+    cloudColors = lerpPreset(SKY_PRESETS.nightCloud, SKY_PRESETS.nautical, t);
     starOpacity = 1 - t * 0.2;
   } else {
-    // Full night
-    colors = SKY_PRESETS.night;
+    clearColors = SKY_PRESETS.night;
+    cloudColors = SKY_PRESETS.nightCloud;
     starOpacity = 1;
   }
 
-  // Overcast desaturates colors and dims stars
-  const desatAmt = cloudFactor * 0.7; // up to 70% desaturation — overcast = grey sky
-  const finalTop = desaturateColor(colors.top, desatAmt);
-  const finalMid = desaturateColor(colors.mid, desatAmt);
-  const finalBottom = desaturateColor(colors.bottom, desatAmt);
+  // Blend between clear and overcast based on cloud cover
+  const colors = cloudFactor > 0.2
+    ? lerpPreset(clearColors, cloudColors, Math.min(1, (cloudFactor - 0.2) / 0.6))
+    : clearColors;
 
   // Stars hidden by clouds
   starOpacity = starOpacity * Math.max(0, 1 - cloudFactor);
 
-  // Cloud opacity: proportional to cloud cover, max 0.8
-  const cloudOpacity = Math.min(0.8, cloudFactor);
-
-  // Apply CSS custom properties
-  el.style.setProperty('--sky-top', finalTop);
-  el.style.setProperty('--sky-mid', finalMid);
-  el.style.setProperty('--sky-bottom', finalBottom);
+  // Apply 5-stop gradient
+  el.style.setProperty('--sky-top', colors.top);
+  el.style.setProperty('--sky-upper', colors.upper);
+  el.style.setProperty('--sky-mid', colors.mid);
+  el.style.setProperty('--sky-lower', colors.lower);
+  el.style.setProperty('--sky-bottom', colors.bottom);
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
-  el.style.setProperty('--cloud-opacity', cloudOpacity.toFixed(3));
-
-  // Cloud tint: CSS filter on cloud elements for day/night adaptation
-  const isNightSky = sunAlt < -6;
-  const cBright = isNightSky ? 0.3 : (cloudFactor > 0.5 ? 0.8 : 1.0);
-  const cHue = isNightSky ? 210 : 0;
-  document.querySelectorAll('.sky-cloud').forEach(el => {
-    el.style.filter = `brightness(${cBright}) hue-rotate(${cHue}deg)`;
-    el.style.webkitFilter = el.style.filter;
-  });
 }
 
-// Generate cloud images at runtime — soft ellipse stacks = natural cloud shapes
-function generateCloudImages() {
-  const configs = [
-    { w: 550, h: 200, blobs: [{x:0.15,y:0.55,rx:0.18,ry:0.35},{x:0.30,y:0.38,rx:0.20,ry:0.42},{x:0.45,y:0.30,rx:0.22,ry:0.48},{x:0.60,y:0.35,rx:0.20,ry:0.40},{x:0.75,y:0.45,rx:0.16,ry:0.32},{x:0.42,y:0.60,rx:0.28,ry:0.28}] },
-    { w: 450, h: 170, blobs: [{x:0.22,y:0.50,rx:0.20,ry:0.40},{x:0.42,y:0.35,rx:0.22,ry:0.45},{x:0.60,y:0.38,rx:0.20,ry:0.38},{x:0.78,y:0.48,rx:0.15,ry:0.30},{x:0.45,y:0.58,rx:0.26,ry:0.26}] },
-    { w: 600, h: 220, blobs: [{x:0.12,y:0.52,rx:0.16,ry:0.32},{x:0.28,y:0.38,rx:0.18,ry:0.40},{x:0.42,y:0.28,rx:0.22,ry:0.48},{x:0.58,y:0.32,rx:0.20,ry:0.44},{x:0.72,y:0.40,rx:0.18,ry:0.36},{x:0.85,y:0.50,rx:0.14,ry:0.28},{x:0.45,y:0.62,rx:0.30,ry:0.26}] },
-    { w: 420, h: 160, blobs: [{x:0.25,y:0.48,rx:0.20,ry:0.38},{x:0.45,y:0.35,rx:0.22,ry:0.44},{x:0.65,y:0.42,rx:0.18,ry:0.34},{x:0.80,y:0.52,rx:0.14,ry:0.28},{x:0.48,y:0.60,rx:0.25,ry:0.25}] }
-  ];
-
-  const clouds = document.querySelectorAll('.sky-cloud');
-  configs.forEach((cfg, i) => {
-    if (!clouds[i]) return;
-    const c = document.createElement('canvas');
-    const dpr = window.devicePixelRatio || 1;
-    c.width = cfg.w * dpr; c.height = cfg.h * dpr;
-    const ctx = c.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    // Draw soft ellipses stacked to form a cloud — high opacity for visibility
-    cfg.blobs.forEach(b => {
-      const grd = ctx.createRadialGradient(
-        cfg.w * b.x, cfg.h * b.y, 0,
-        cfg.w * b.x, cfg.h * b.y, cfg.w * b.rx
-      );
-      grd.addColorStop(0, 'rgba(255,255,255,1)');
-      grd.addColorStop(0.3, 'rgba(255,255,255,0.85)');
-      grd.addColorStop(0.6, 'rgba(255,255,255,0.45)');
-      grd.addColorStop(0.85, 'rgba(255,255,255,0.12)');
-      grd.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = grd;
-      ctx.beginPath();
-      ctx.ellipse(cfg.w * b.x, cfg.h * b.y, cfg.w * b.rx * 1.3, cfg.h * b.ry * 1.3, 0, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    clouds[i].style.backgroundImage = `url(${c.toDataURL()})`;
-  });
-}
-
-// Update cloud color by tinting the cloud elements
-function updateCloudColor() {
-  const sunAlt = _getSunAltitude();
-  const cloudFactor = Math.min(1, (state.cloudCover ?? 20) / 100);
-  const isNight = sunAlt < -6;
-
-  // Determine cloud tint via CSS filter on the cloud elements
-  // Night: darker, blue-tinted. Overcast day: grey. Clear day: white
-  let brightness, hueRotate, saturate;
-  if (isNight) {
-    // Night: dim clouds, slight blue tint
-    brightness = 0.25 + (1 - cloudFactor) * 0.15;
-    hueRotate = 210;
-    saturate = 0.4;
-  } else if (cloudFactor > 0.5) {
-    // Overcast day: clouds LIGHTER than grey sky = visible white/light grey masses
-    brightness = 0.85;
-    hueRotate = 0;
-    saturate = 0.2;
-  } else {
-    // Clear/partly cloudy: bright white clouds on blue sky
-    brightness = 1;
-    hueRotate = 0;
-    saturate = 0;
-  }
-
-  document.querySelectorAll('.sky-cloud').forEach(el => {
-    el.style.filter = `brightness(${brightness}) hue-rotate(${hueRotate}deg) saturate(${saturate})`;
-    el.style.webkitFilter = el.style.filter;
-  });
-}
-
-// Weather effects: rain + enhanced clouds based on real data
+// Weather effects: rain based on real data
 function updateWeatherEffects() {
   const el = $('sky-bg');
   if (!el) return;
