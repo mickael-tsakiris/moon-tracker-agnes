@@ -111,6 +111,9 @@ async function startApp() {
 
     state.updateTimer = setInterval(refresh, CONFIG.updateInterval);
 
+    // Step 4: Subscribe to push notifications (non-blocking)
+    subscribeToPush().catch(e => console.log('Push subscription skipped:', e.message));
+
   } catch (err) {
     console.error('Init error:', err);
     showError(err.message || 'Une erreur est survenue.');
@@ -1887,3 +1890,47 @@ function stopAR() {
 
 // Init AR button listener on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', initAR);
+
+// ============================
+// PUSH NOTIFICATIONS
+// ============================
+
+const VAPID_PUBLIC_KEY = 'BPblSpfMWkRcnITlHzMph5wpW15AN9JgHiVFnv4nQWPwC-cDlBU9-BpKgP-rvLnCaYSJDZfsDGiU1_vgtS47X1s';
+const PUSH_API_URL = 'https://moon-push.mickael-tsakiris.workers.dev';
+
+async function subscribeToPush() {
+  if (!('PushManager' in window) || !('serviceWorker' in navigator)) {
+    throw new Error('Push not supported');
+  }
+
+  // Check if already subscribed
+  if (localStorage.getItem('push-subscribed') === 'true') return;
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    throw new Error('Notification permission denied');
+  }
+
+  const reg = await navigator.serviceWorker.ready;
+  let subscription = await reg.pushManager.getSubscription();
+
+  if (!subscription) {
+    const key = Uint8Array.from(atob(VAPID_PUBLIC_KEY.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: key
+    });
+  }
+
+  // Send subscription to backend
+  const resp = await fetch(PUSH_API_URL + '/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(subscription)
+  });
+
+  if (resp.ok) {
+    localStorage.setItem('push-subscribed', 'true');
+    console.log('Push subscription registered');
+  }
+}

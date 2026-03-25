@@ -1,0 +1,16 @@
+name = "moon-push"
+main = "index.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron trigger: every day at 19:00 CET (18:00 UTC in winter, 17:00 UTC in summer)
+# Using 17:00 and 18:00 UTC to cover both — worker checks actual Paris time
+[triggers]
+crons = ["0 17 * * *", "0 18 * * *"]
+
+[[kv_namespaces]]
+binding = "PUSH_SUBS"
+id = ""  # Fill after: wrangler kv namespace create PUSH_SUBS
+
+[vars]
+VAPID_SUBJECT = "mailto:mickael.tsakiris@gmail.com"

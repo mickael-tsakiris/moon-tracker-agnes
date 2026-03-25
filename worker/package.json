@@ -1,0 +1,16 @@
+{
+  "name": "moon-push-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test-push": "curl -X POST http://localhost:8787/test"
+  },
+  "dependencies": {
+    "astronomy-engine": "^2.1.19"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
