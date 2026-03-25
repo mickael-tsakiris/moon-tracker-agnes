@@ -3,7 +3,7 @@
    ============================ */
 
 const CONFIG = {
-  landmarkRadius: 2000,
+  landmarkRadius: 300,
   updateInterval: 60000,
   overpassApi: 'https://overpass-api.de/api/interpreter',
   nominatimApi: 'https://nominatim.openstreetmap.org/reverse',
@@ -361,7 +361,7 @@ async function fetchOverpassPOIs() {
 
 // Nearby shops, cafes, pharmacies — within 250m (what you can see/walk to)
 async function fetchOverpassNearby() {
-  const r = 250;
+  const r = 200;
   const query = `[out:json][timeout:8];(
     node["amenity"="cafe"](around:${r},${state.lat},${state.lng});
     node["amenity"="pharmacy"](around:${r},${state.lat},${state.lng});
@@ -737,6 +737,9 @@ function renderMoonPhase() {
 
   const isWaxing = phaseAngle < 180;
 
+  // DEBUG — visible on canvas for verification
+  console.log(`MOON DEBUG: frac=${frac.toFixed(3)}, phaseAngle=${phaseAngle.toFixed(1)}°, isWaxing=${isWaxing}, tw=${(r * Math.abs(2 * frac - 1)).toFixed(1)}px (r=${r}), tilt=${(tilt * 180 / Math.PI).toFixed(1)}°`);
+
   // NO outer glow. NO rim highlight. Clean render only.
 
   // --- Moon disc clip ---
@@ -802,8 +805,11 @@ function renderMoonPhase() {
     }
     off.closePath();
 
-    // Earthshine: dark but not pure black, slight blue tint
-    off.fillStyle = 'rgba(6,8,22,0.95)';
+    // Shadow blends with sky — semi-transparent so stars show through slightly
+    off.fillStyle = 'rgba(8,10,24,0.88)';
+    off.fill();
+    // Earthshine: very faint blue on the dark side (light bouncing from Earth)
+    off.fillStyle = 'rgba(40,50,80,0.06)';
     off.fill();
     off.restore();
 
@@ -817,8 +823,8 @@ function renderMoonPhase() {
     ctx.restore();
 
   } else if (frac <= 0.003) {
-    // New moon — full shadow with earthshine
-    ctx.fillStyle = 'rgba(6,8,22,0.94)';
+    // New moon — full shadow, blends with sky
+    ctx.fillStyle = 'rgba(8,10,24,0.88)';
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
   }
 
@@ -1369,24 +1375,28 @@ function animateSky() {
     grad.addColorStop(0.9, lerpColor('#6e3020', '#405068', t));
     grad.addColorStop(1, lerpColor('#8a4518', '#354558', t));
   } else if (timeF >= 7.5 && timeF < 9.5) {
-    // Morning transition to day
+    // Morning — sky brightening toward real daytime blue
     const t = (timeF - 7.5) / 2;
-    grad.addColorStop(0, lerpColor('#152848', '#142540', t));
-    grad.addColorStop(0.4, lerpColor('#1e3555', '#1a3050', t));
-    grad.addColorStop(0.7, lerpColor('#2a3555', '#1e3555', t));
-    grad.addColorStop(1, lerpColor('#354558', '#182c48', t));
+    grad.addColorStop(0, lerpColor('#152848', '#1a3a60', t));
+    grad.addColorStop(0.3, lerpColor('#1e3555', '#254a78', t));
+    grad.addColorStop(0.6, lerpColor('#2a3555', '#2d5588', t));
+    grad.addColorStop(0.85, lerpColor('#354558', '#3a6090', t));
+    grad.addColorStop(1, lerpColor('#354558', '#4a7098', t));
   } else if (timeF >= 9.5 && timeF < 16.5) {
-    // Daytime — deep muted blue (not bright, this is a dark-themed app)
+    // Full daytime — realistic blue sky
     if (cloud > 70) {
-      grad.addColorStop(0, '#1e2a3a');
-      grad.addColorStop(0.4, '#253545');
-      grad.addColorStop(0.7, '#2a3a4a');
-      grad.addColorStop(1, '#222e3c');
+      // Overcast — muted grey-blue
+      grad.addColorStop(0, '#3a4a5a');
+      grad.addColorStop(0.3, '#485868');
+      grad.addColorStop(0.6, '#506070');
+      grad.addColorStop(1, '#445565');
     } else {
-      grad.addColorStop(0, '#122035');
-      grad.addColorStop(0.3, '#18304a');
-      grad.addColorStop(0.6, '#1a3350');
-      grad.addColorStop(1, '#142840');
+      // Clear daytime — real blue sky
+      grad.addColorStop(0, '#1e4575');
+      grad.addColorStop(0.3, '#2a5a90');
+      grad.addColorStop(0.6, '#3568a0');
+      grad.addColorStop(0.85, '#4078a8');
+      grad.addColorStop(1, '#4a85b0');
     }
   } else if (timeF >= 16.5 && timeF < 18.5) {
     // Sunset — warm horizon, blue zenith transitioning to deep blue
