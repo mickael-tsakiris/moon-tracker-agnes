@@ -192,9 +192,7 @@ body {
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
-  /* Fade only the very edges — keep cloud body visible */
-  -webkit-mask-image: radial-gradient(ellipse at center, black 60%, transparent 95%);
-  mask-image: radial-gradient(ellipse at center, black 60%, transparent 95%);
+  /* No mask — let the PNG's own transparency handle edges */
 }
 
 .sky-cloud.c1 {

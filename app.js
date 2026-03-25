@@ -1283,8 +1283,8 @@ function updateSky() {
   // Stars hidden by clouds
   starOpacity = starOpacity * Math.max(0, 1 - cloudFactor);
 
-  // Cloud opacity: visible from 20% cover, max 0.5
-  const cloudOpacity = Math.min(0.5, Math.max(0, cloudFactor * 0.55));
+  // Cloud opacity: proportional to cloud cover, max 0.8
+  const cloudOpacity = Math.min(0.8, cloudFactor);
 
   // Apply CSS custom properties
   el.style.setProperty('--sky-top', finalTop);
