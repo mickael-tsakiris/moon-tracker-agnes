@@ -1828,57 +1828,69 @@ function renderAROverlay() {
     $('ar-status').textContent = 'La Lune est là !';
     $('ar-description').textContent = `${getPhaseName(m.phaseAngle)} — ${Math.round(m.fraction * 100)}% illuminée`;
   } else {
-    // Moon is off-screen — draw prominent arrow pointing to it
-    const arrowSize = 36;
-    const margin = 80;
+    // Moon is off-screen — draw arrow pointing TOWARD the moon
+    const arrowSize = 32;
+    const edgePad = 60;
 
-    // Direction angle from screen center to moon
-    const angle = Math.atan2(
-      -(moonY - h / 2),
-      moonX - w / 2
+    // Angle from screen center to moon position (where it actually is)
+    const toMoonAngle = Math.atan2(moonY - h / 2, moonX - w / 2);
+
+    // Place arrow on screen edge in the direction of the moon
+    // Use ellipse equation to find intersection with screen edge
+    const rx = w / 2 - edgePad, ry = h / 2 - edgePad;
+    const scale = Math.min(
+      Math.abs(rx / Math.cos(toMoonAngle)) || Infinity,
+      Math.abs(ry / Math.sin(toMoonAngle)) || Infinity
     );
+    const ax = w / 2 + Math.cos(toMoonAngle) * Math.min(scale, Math.max(rx, ry));
+    const ay = h / 2 + Math.sin(toMoonAngle) * Math.min(scale, Math.max(rx, ry));
 
-    // Position arrow along the direction vector, inset from edge
-    const cx = w / 2, cy = h / 2;
-    const maxDist = Math.min(w, h) / 2 - margin;
-    const dx = Math.cos(-angle + Math.PI), dy = Math.sin(-angle + Math.PI);
-    const ax = cx + dx * maxDist;
-    const ay = cy + dy * maxDist;
+    // Clamp to safe area
+    const safeAx = Math.max(edgePad, Math.min(w - edgePad, ax));
+    const safeAy = Math.max(edgePad, Math.min(h - edgePad, ay));
 
-    // Glow behind arrow
     ctx.save();
-    ctx.translate(ax, ay);
-    ctx.rotate(-angle + Math.PI);
-    ctx.shadowColor = 'rgba(201,168,124,0.6)';
-    ctx.shadowBlur = 20;
+    ctx.translate(safeAx, safeAy);
+    // Rotate so arrow tip points toward the moon
+    // Arrow drawn pointing UP (negative Y), so rotate by toMoonAngle - PI/2
+    ctx.rotate(toMoonAngle - Math.PI / 2);
 
-    // Outer chevron (larger, semi-transparent)
+    // Glow
+    ctx.shadowColor = 'rgba(201,168,124,0.5)';
+    ctx.shadowBlur = 16;
+
+    // Pulsing opacity (subtle)
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 400);
+
+    // Outer chevron
+    ctx.globalAlpha = pulse * 0.3;
     ctx.beginPath();
-    ctx.moveTo(0, -arrowSize * 1.3);
-    ctx.lineTo(arrowSize * 0.8, arrowSize * 0.4);
-    ctx.lineTo(0, arrowSize * 0.05);
-    ctx.lineTo(-arrowSize * 0.8, arrowSize * 0.4);
+    ctx.moveTo(0, -arrowSize * 1.4);
+    ctx.lineTo(arrowSize * 0.85, arrowSize * 0.3);
+    ctx.lineTo(0, -arrowSize * 0.1);
+    ctx.lineTo(-arrowSize * 0.85, arrowSize * 0.3);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(201,168,124,0.3)';
+    ctx.fillStyle = '#c9a87c';
     ctx.fill();
 
-    // Inner chevron (solid)
+    // Inner chevron
+    ctx.globalAlpha = pulse * 0.9;
     ctx.beginPath();
     ctx.moveTo(0, -arrowSize);
-    ctx.lineTo(arrowSize * 0.55, arrowSize * 0.35);
-    ctx.lineTo(0, arrowSize * 0.05);
-    ctx.lineTo(-arrowSize * 0.55, arrowSize * 0.35);
+    ctx.lineTo(arrowSize * 0.55, arrowSize * 0.15);
+    ctx.lineTo(0, -arrowSize * 0.2);
+    ctx.lineTo(-arrowSize * 0.55, arrowSize * 0.15);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(201,168,124,0.9)';
+    ctx.fillStyle = '#c9a87c';
     ctx.fill();
 
     ctx.shadowBlur = 0;
-
-    // Small "LUNE" label below arrow
-    ctx.font = 'bold 11px -apple-system, sans-serif';
-    ctx.fillStyle = 'rgba(201,168,124,0.8)';
+    ctx.globalAlpha = pulse * 0.7;
+    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.fillStyle = '#c9a87c';
     ctx.textAlign = 'center';
-    ctx.fillText('LUNE', 0, arrowSize * 0.9);
+    ctx.fillText('LUNE', 0, arrowSize * 0.75);
+    ctx.globalAlpha = 1;
 
     ctx.restore();
 
@@ -1934,8 +1946,35 @@ const VAPID_PUBLIC_KEY = 'BPblSpfMWkRcnITlHzMph5wpW15AN9JgHiVFnv4nQWPwC-cDlBU9-B
 const PUSH_API_URL = 'https://moon-push.mickael-tsakiris.workers.dev'; // Deployed
 
 function showNotificationBanner() {
-  if (!('PushManager' in window) || !('Notification' in window)) return;
   if (localStorage.getItem('push-subscribed') === 'true') return;
+  if (localStorage.getItem('push-dismissed') === 'true') return;
+
+  const isInstalled = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+  const pushSupported = ('PushManager' in window) && ('Notification' in window);
+
+  // If not installed as PWA, show install prompt instead
+  if (!isInstalled || !pushSupported) {
+    const banner = document.createElement('div');
+    banner.id = 'notif-banner';
+    banner.style.cssText = `
+      position:fixed;bottom:88px;left:1rem;right:1rem;z-index:9998;
+      background:rgba(30,40,80,0.95);color:#fff;text-align:center;
+      padding:1rem;border-radius:16px;backdrop-filter:blur(12px);
+      font-size:0.85rem;box-shadow:0 4px 24px rgba(0,0,0,0.4);
+    `;
+    banner.innerHTML = `
+      <div style="margin-bottom:0.6rem">Pour recevoir les alertes Lune, ajoute l'app sur ton écran d'accueil.</div>
+      <div style="font-size:0.75rem;color:rgba(255,255,255,0.5)">Safari → Partager → Sur l'écran d'accueil</div>
+      <button id="btn-notif-no" style="
+        background:transparent;color:rgba(255,255,255,0.5);border:none;
+        padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;margin-top:0.5rem;
+      ">OK, compris</button>
+    `;
+    document.body.appendChild(banner);
+    $('btn-notif-no')?.addEventListener('click', () => banner.remove());
+    return;
+  }
+
   if (Notification.permission === 'denied') return;
 
   const banner = document.createElement('div');
