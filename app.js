@@ -448,6 +448,50 @@ async function fetchCloudCover() {
 }
 
 // ============================
+// WEATHER TEXT FROM WMO CODE
+// ============================
+function getWeatherText(wc) {
+  if (wc >= 99) return 'Orage avec grêle';
+  if (wc >= 95) return 'Orage';
+  if (wc === 86) return 'Fortes chutes de neige';
+  if (wc === 85) return 'Averses de neige';
+  if (wc === 82) return 'Averses violentes';
+  if (wc === 81) return 'Averses modérées';
+  if (wc === 80) return 'Averses légères';
+  if (wc === 77) return 'Grains de neige';
+  if (wc === 75) return 'Fortes chutes de neige';
+  if (wc === 73) return 'Neige modérée';
+  if (wc === 71) return 'Neige légère';
+  if (wc === 67) return 'Pluie verglaçante forte';
+  if (wc === 66) return 'Pluie verglaçante';
+  if (wc === 65) return 'Forte pluie';
+  if (wc === 63) return 'Pluie modérée';
+  if (wc === 61) return 'Pluie légère';
+  if (wc === 57) return 'Bruine verglaçante';
+  if (wc === 56) return 'Bruine verglaçante';
+  if (wc === 55) return 'Bruine dense';
+  if (wc === 53) return 'Bruine modérée';
+  if (wc === 51) return 'Bruine légère';
+  if (wc === 48) return 'Brouillard givrant';
+  if (wc === 45) return 'Brouillard';
+  if (wc === 3) return 'Ciel couvert';
+  if (wc === 2) return 'Partiellement nuageux';
+  if (wc === 1) return 'Peu nuageux';
+  if (wc === 0) return 'Ciel dégagé';
+  return 'Ciel couvert';
+}
+
+function getWeatherEmoji(wc) {
+  if (wc >= 95) return '';
+  if (wc >= 85 || (wc >= 71 && wc <= 77)) return '';
+  if (wc >= 80 || (wc >= 61 && wc <= 67)) return '';
+  if (wc >= 51 && wc <= 57) return '';
+  if (wc === 45 || wc === 48) return '';
+  if (wc >= 2) return '';
+  return '';
+}
+
+// ============================
 // DESCRIPTION ENGINE
 // ============================
 function generateMainDescription() {
@@ -466,8 +510,11 @@ function generateMainDescription() {
       if (streetRef) desc += `, côté ${streetRef}`;
       else if (anyRef) desc += `, vers ${anyRef}`;
       desc += '.';
-      if (state.cloudCover !== null && state.cloudCover > 70)
-        desc += ` Ciel couvert à ${Math.round(state.cloudCover)}%.`;
+      if (state.weatherCode > 0) {
+        desc += ` ${getWeatherText(state.weatherCode)}.`;
+      } else if (state.cloudCover !== null && state.cloudCover > 70) {
+        desc += ` Ciel couvert (${Math.round(state.cloudCover)}%).`;
+      }
       return desc;
     }
     return 'La Lune se repose sous l\'horizon. Prochain lever demain.';
@@ -556,8 +603,10 @@ function generateMainDescription() {
     desc += bodyHint;
   }
 
-  // Cloud context
-  if (state.cloudCover !== null) {
+  // Weather context
+  if (state.weatherCode > 0) {
+    desc += ` ${getWeatherText(state.weatherCode)}.`;
+  } else if (state.cloudCover !== null) {
     if (state.cloudCover > 80) desc += ` Ciel couvert (${Math.round(state.cloudCover)}%).`;
     else if (state.cloudCover > 50) desc += ` Nuages partiels.`;
   }
@@ -1110,9 +1159,24 @@ function renderVisibility() {
   if (!badge || state.cloudCover === null) { badge?.classList.add('hidden'); return; }
   badge.classList.remove('hidden');
   badge.className = 'visibility-badge';
-  if (state.cloudCover < 30) { badge.classList.add('clear'); badge.textContent = 'Ciel dégagé — conditions idéales'; }
-  else if (state.cloudCover < 60) { badge.classList.add('partial'); badge.textContent = `Partiellement couvert (${Math.round(state.cloudCover)}%)`; }
-  else { badge.classList.add('cloudy'); badge.textContent = `Ciel couvert (${Math.round(state.cloudCover)}%) — Lune peu visible`; }
+  const wc = state.weatherCode ?? 0;
+  const weatherLabel = getWeatherText(wc);
+
+  if (wc >= 61 || wc === 67 || wc === 66) {
+    // Rain, snow, storm — poor visibility
+    badge.classList.add('cloudy');
+    badge.textContent = `${weatherLabel} — Lune peu visible`;
+  } else if (wc >= 45 || state.cloudCover >= 60) {
+    // Fog, overcast, drizzle
+    badge.classList.add('cloudy');
+    badge.textContent = `${weatherLabel} — Lune peu visible`;
+  } else if (state.cloudCover >= 30) {
+    badge.classList.add('partial');
+    badge.textContent = `${weatherLabel}`;
+  } else {
+    badge.classList.add('clear');
+    badge.textContent = `${weatherLabel} — conditions idéales`;
+  }
 }
 
 function renderLandmarks() {
