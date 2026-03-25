@@ -740,6 +740,47 @@ function renderAll() {
   $('last-update').textContent = `Mis à jour à ${formatTime(new Date())}`;
 }
 
+// Box blur on alpha channel only — Safari iOS fallback for canvas filter
+function _boxBlurAlpha(ctx, w, h, radius) {
+  if (radius < 1) return;
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const len = w * h;
+  const buf = new Uint8Array(len);
+  // Extract alpha
+  for (let i = 0; i < len; i++) buf[i] = d[i * 4 + 3];
+  // Horizontal pass
+  const tmp = new Uint8Array(len);
+  for (let y = 0; y < h; y++) {
+    let sum = 0;
+    for (let x = -radius; x <= radius; x++) sum += buf[y * w + Math.max(0, Math.min(w - 1, x))];
+    for (let x = 0; x < w; x++) {
+      tmp[y * w + x] = Math.round(sum / (radius * 2 + 1));
+      const add = Math.min(w - 1, x + radius + 1);
+      const rem = Math.max(0, x - radius);
+      sum += buf[y * w + add] - buf[y * w + rem];
+    }
+  }
+  // Vertical pass
+  const out = new Uint8Array(len);
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    for (let y = -radius; y <= radius; y++) sum += tmp[Math.max(0, Math.min(h - 1, y)) * w + x];
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = Math.round(sum / (radius * 2 + 1));
+      const add = Math.min(h - 1, y + radius + 1);
+      const rem = Math.max(0, y - radius);
+      sum += tmp[add * w + x] - tmp[rem * w + x];
+    }
+  }
+  // Write back alpha (keep RGB white)
+  for (let i = 0; i < len; i++) {
+    d[i * 4] = 255; d[i * 4 + 1] = 255; d[i * 4 + 2] = 255;
+    d[i * 4 + 3] = out[i];
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 // Sun altitude helper — used for moon tint and sky
 function _getSunAltitude() {
   try {
@@ -828,10 +869,24 @@ function renderMoonPhase() {
     tc.restore();
 
     // Blur the mask for soft terminator
-    // canvas.filter works on Chrome/Firefox/desktop Safari — on iOS Safari it's a no-op (sharp terminator)
-    try { mc.filter = 'blur(20px)'; } catch (_) {}
-    mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
-    mc.filter = 'none';
+    // Try canvas context filter first (Chrome/Firefox), fallback to manual box blur (Safari iOS)
+    let blurApplied = false;
+    try {
+      mc.filter = 'blur(20px)';
+      if (mc.filter === 'blur(20px)') {
+        mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+        mc.filter = 'none';
+        blurApplied = true;
+      } else {
+        mc.filter = 'none';
+      }
+    } catch (_) {}
+
+    if (!blurApplied) {
+      // Safari iOS fallback: manual box blur on alpha channel
+      mc.drawImage(tmp, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
+      _boxBlurAlpha(mc, mask.width, mask.height, Math.round(10 * dpr));
+    }
   }
 
   // --- MOON CANVAS ---
