@@ -180,7 +180,7 @@ body {
   100% { opacity: var(--star-opacity, 1); }
 }
 
-/* Cloud layers — canvas-generated cloud images as backgrounds */
+/* Cloud layers — real cloud PNG images with faded edges */
 .sky-cloud {
   position: absolute;
   pointer-events: none;
@@ -188,9 +188,13 @@ body {
   will-change: transform;
   opacity: var(--cloud-opacity, 0);
   transition: opacity 5s ease;
-  background-size: contain;
+  background-image: url('cloud1.png');
+  background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
+  /* Fade edges so cloud blends into sky — no hard rectangle */
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
 }
 
 .sky-cloud.c1 {

@@ -27,12 +27,8 @@ const sky = {}; // kept for compat — CSS sky now handles rendering
 // INIT
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
-  // Start CSS sky + generate cloud textures
-  try {
-    generateCloudImages();
-    updateSky();
-    setInterval(updateSky, 60000);
-  } catch (e) { console.error('Sky init error:', e); }
+  // Start CSS sky
+  try { updateSky(); setInterval(updateSky, 60000); } catch (e) { console.error('Sky init error:', e); }
 
   $('btn-start')?.addEventListener('click', startApp);
   $('btn-retry')?.addEventListener('click', () => { showScreen('loading'); startApp(); });
@@ -1287,9 +1283,8 @@ function updateSky() {
   // Stars hidden by clouds
   starOpacity = starOpacity * Math.max(0, 1 - cloudFactor);
 
-  // Cloud opacity: ramp up quickly so overcast looks overcast
-  // 0 at 0%, 0.5 at 40%, 1.0 at 70%+
-  const cloudOpacity = Math.min(1, cloudFactor / 0.7);
+  // Cloud opacity: visible from 30% cover, max 0.6 (not fully opaque — sky must show through)
+  const cloudOpacity = Math.min(0.6, Math.max(0, (cloudFactor - 0.15) / 0.7));
 
   // Apply CSS custom properties
   el.style.setProperty('--sky-top', finalTop);
@@ -1298,8 +1293,14 @@ function updateSky() {
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
   el.style.setProperty('--cloud-opacity', cloudOpacity.toFixed(3));
 
-  // Update cloud tint based on time of day + weather
-  updateCloudColor();
+  // Cloud tint: CSS filter on cloud elements for day/night adaptation
+  const isNightSky = sunAlt < -6;
+  const cBright = isNightSky ? 0.3 : (cloudFactor > 0.5 ? 0.8 : 1.0);
+  const cHue = isNightSky ? 210 : 0;
+  document.querySelectorAll('.sky-cloud').forEach(el => {
+    el.style.filter = `brightness(${cBright}) hue-rotate(${cHue}deg)`;
+    el.style.webkitFilter = el.style.filter;
+  });
 }
 
 // Generate cloud images at runtime — soft ellipse stacks = natural cloud shapes
