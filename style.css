@@ -180,7 +180,7 @@ body {
   100% { opacity: var(--star-opacity, 1); }
 }
 
-/* Cloud layers */
+/* Cloud layers — visible, soft, drifting */
 .sky-cloud {
   position: absolute;
   border-radius: 50%;
@@ -188,43 +188,48 @@ body {
   pointer-events: none;
   z-index: 3;
   will-change: transform;
+  transition: opacity 10s ease;
 }
 
 .sky-cloud.c1 {
-  width: 520px;
-  height: 90px;
-  top: 12%;
-  left: -30%;
-  background: radial-gradient(ellipse at center, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 60%, transparent 100%);
-  filter: blur(50px);
-  animation: drift-cloud-1 160s linear infinite;
+  width: 600px;
+  height: 140px;
+  top: 8%;
+  left: -40%;
+  background: radial-gradient(ellipse at 40% 50%, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 40%, rgba(255,255,255,0.03) 70%, transparent 100%);
+  filter: blur(30px);
+  -webkit-filter: blur(30px);
+  animation: drift-cloud-1 120s linear infinite;
 }
 .sky-cloud.c2 {
-  width: 400px;
-  height: 70px;
-  top: 28%;
-  left: -25%;
-  background: radial-gradient(ellipse at center, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 60%, transparent 100%);
-  filter: blur(60px);
-  animation: drift-cloud-2 200s linear infinite;
+  width: 500px;
+  height: 120px;
+  top: 25%;
+  left: -30%;
+  background: radial-gradient(ellipse at 55% 45%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0.02) 70%, transparent 100%);
+  filter: blur(35px);
+  -webkit-filter: blur(35px);
+  animation: drift-cloud-2 160s linear infinite;
 }
 .sky-cloud.c3 {
-  width: 600px;
-  height: 110px;
-  top: 45%;
-  left: -35%;
-  background: radial-gradient(ellipse at center, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 55%, transparent 100%);
-  filter: blur(45px);
-  animation: drift-cloud-3 140s linear infinite;
+  width: 700px;
+  height: 160px;
+  top: 40%;
+  left: -45%;
+  background: radial-gradient(ellipse at 45% 55%, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.15) 35%, rgba(255,255,255,0.04) 65%, transparent 100%);
+  filter: blur(25px);
+  -webkit-filter: blur(25px);
+  animation: drift-cloud-3 100s linear infinite;
 }
 .sky-cloud.c4 {
-  width: 350px;
-  height: 65px;
-  top: 62%;
-  left: -20%;
-  background: radial-gradient(ellipse at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.018) 60%, transparent 100%);
-  filter: blur(70px);
-  animation: drift-cloud-4 180s linear infinite;
+  width: 450px;
+  height: 100px;
+  top: 60%;
+  left: -25%;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.10) 45%, rgba(255,255,255,0.02) 70%, transparent 100%);
+  filter: blur(40px);
+  -webkit-filter: blur(40px);
+  animation: drift-cloud-4 140s linear infinite;
 }
 
 @keyframes drift-cloud-1 {
@@ -548,16 +553,18 @@ body {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  text-shadow: 0 1px 6px rgba(0,0,0,0.25);
   animation: enter 0.5s var(--ease) both;
 }
 
 .location-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   margin-top: 6px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 
 /* ========== CARDS — Frosted Glass ========== */
