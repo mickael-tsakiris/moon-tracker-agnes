@@ -10,7 +10,7 @@ crons = ["0 17 * * *", "0 18 * * *"]
 
 [[kv_namespaces]]
 binding = "PUSH_SUBS"
-id = ""  # Fill after: wrangler kv namespace create PUSH_SUBS
+id = "47a3ae3a17ff47598e44be69b72239af"
 
 [vars]
 VAPID_SUBJECT = "mailto:mickael.tsakiris@gmail.com"

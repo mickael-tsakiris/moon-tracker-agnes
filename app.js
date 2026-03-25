@@ -1896,7 +1896,7 @@ document.addEventListener('DOMContentLoaded', initAR);
 // ============================
 
 const VAPID_PUBLIC_KEY = 'BPblSpfMWkRcnITlHzMph5wpW15AN9JgHiVFnv4nQWPwC-cDlBU9-BpKgP-rvLnCaYSJDZfsDGiU1_vgtS47X1s';
-const PUSH_API_URL = 'https://moon-push.mickael-tsakiris.workers.dev';
+const PUSH_API_URL = 'https://moon-push.mickael-tsakiris.workers.dev'; // Deployed
 
 async function subscribeToPush() {
   if (!('PushManager' in window) || !('serviceWorker' in navigator)) {
