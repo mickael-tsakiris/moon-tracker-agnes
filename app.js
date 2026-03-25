@@ -1954,29 +1954,31 @@ function showNotificationBanner() {
   if (localStorage.getItem('push-subscribed') === 'true') return;
   if (localStorage.getItem('push-dismissed') === 'true') return;
 
-  const isInstalled = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
   const pushSupported = ('PushManager' in window) && ('Notification' in window);
 
-  // If not installed as PWA, show install prompt instead
-  if (!isInstalled || !pushSupported) {
-    const banner = document.createElement('div');
-    banner.id = 'notif-banner';
-    banner.style.cssText = `
-      position:fixed;bottom:88px;left:1rem;right:1rem;z-index:9998;
-      background:rgba(30,40,80,0.95);color:#fff;text-align:center;
-      padding:1rem;border-radius:16px;backdrop-filter:blur(12px);
-      font-size:0.85rem;box-shadow:0 4px 24px rgba(0,0,0,0.4);
-    `;
-    banner.innerHTML = `
-      <div style="margin-bottom:0.6rem">Pour recevoir les alertes Lune, ajoute l'app sur ton écran d'accueil.</div>
-      <div style="font-size:0.75rem;color:rgba(255,255,255,0.5)">Safari → Partager → Sur l'écran d'accueil</div>
-      <button id="btn-notif-no" style="
-        background:transparent;color:rgba(255,255,255,0.5);border:none;
-        padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;margin-top:0.5rem;
-      ">OK, compris</button>
-    `;
-    document.body.appendChild(banner);
-    $('btn-notif-no')?.addEventListener('click', () => banner.remove());
+  // If push not supported at all, show install hint
+  if (!pushSupported) {
+    const isInstalled = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+    if (!isInstalled) {
+      const banner = document.createElement('div');
+      banner.id = 'notif-banner';
+      banner.style.cssText = `
+        position:fixed;bottom:92px;left:1rem;right:1rem;z-index:9998;
+        background:rgba(30,40,80,0.95);color:#fff;text-align:center;
+        padding:1rem;border-radius:16px;backdrop-filter:blur(12px);
+        font-size:0.85rem;box-shadow:0 4px 24px rgba(0,0,0,0.4);
+      `;
+      banner.innerHTML = `
+        <div style="margin-bottom:0.6rem">Pour recevoir les alertes Lune, ajoute l'app sur ton écran d'accueil.</div>
+        <div style="font-size:0.75rem;color:rgba(255,255,255,0.5)">Safari → Partager → Sur l'écran d'accueil</div>
+        <button id="btn-notif-no" style="
+          background:transparent;color:rgba(255,255,255,0.5);border:none;
+          padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;margin-top:0.5rem;
+        ">OK, compris</button>
+      `;
+      document.body.appendChild(banner);
+      $('btn-notif-no')?.addEventListener('click', () => banner.remove());
+    }
     return;
   }
 
