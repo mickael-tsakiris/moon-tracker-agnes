@@ -1,4 +1,4 @@
-# Architecture — Moon Tracker Agnes
+# Architecture — Moon Tracker Agnes (v37)
 
 ## Vue d'ensemble
 
@@ -6,25 +6,36 @@ PWA single-page, vanilla JS (zero framework), deployee sur GitHub Pages.
 L'app localise la Lune en temps reel et guide l'utilisateur avec des
 reperes physiques de son environnement immediat.
 
+Push notifications via Cloudflare Worker : alerte le soir si la lune est visible.
+
 ## Fichiers
 
 ```
 moon-tracker-agnes/
-  index.html          # Structure HTML, 4 onglets, SVG inline (terminatorBlur)
-  style.css           # Design system complet (variables, glassmorphism, responsive)
-  app.js              # Logique unique (~1890 lignes)
-  moon-texture.jpg    # Photo pleine lune NASA/Wikipedia 512x512
-  sw.js               # Service worker network-first, cache versionne
-  manifest.json       # PWA manifest (nom, icones, theme)
-  favicon.svg         # Icone lune SVG
-  .claude/            # Config Claude Code (launch.json, settings)
+  index.html            # Structure HTML, 4 onglets, SVG inline (terminatorBlur)
+  style.css             # Design system complet (variables, glassmorphism, responsive)
+  app.js                # Logique unique (~2100 lignes)
+  moon-texture.jpg      # Photo pleine lune NASA/Wikipedia 512x512
+  sw.js                 # Service worker: network-first cache + push + notificationclick
+  manifest.json         # PWA manifest (start_url: "./", scope: "./")
+  favicon.svg           # Icone lune SVG (navigateur)
+  apple-touch-icon.png  # Icone 180x180 (ecran d'accueil iOS, generee depuis moon-texture.jpg)
+  icon-192.png          # Icone manifest 192x192
+  icon-512.png          # Icone manifest 512x512 + maskable
+  worker/               # Cloudflare Worker — push notifications
+    index.js            # Calcul lune + meteo + generation message + envoi push
+    landmarks.js        # Reperes physiques autour du 33 Boissy d'Anglas
+    wrangler.toml       # Config Cloudflare (cron triggers, KV binding)
+    package.json        # Dependencies (astronomy-engine)
+  .claude/              # Config Claude Code (launch.json, settings, CLAUDE.md)
 ```
 
 ## Flux de donnees
 
 ```
 1. INIT
-   Geolocalisation (ou fallback Paris 17e 48.8835, 2.3219)
+   Service Worker register() → DOMContentLoaded
+   Geolocalisation (ou fallback Paris 48.8566, 2.3522)
         |
         v
 2. CALCULS PARALLELES
@@ -47,7 +58,56 @@ moon-tracker-agnes/
 4. BOUCLE LIVE
    +-- DeviceOrientation → heading boussole + AR tracking
    +-- setInterval 60s   → recalcul lune + re-fetch meteo
+        |
+        v
+5. PUSH NOTIFICATIONS (apres 3s, si pas deja abonne)
+   +-- showNotificationBanner() → bandeau "Activer" (geste utilisateur)
+   +-- subscribeToPush() → PushManager.subscribe + envoi au Worker
 ```
+
+## Push Notifications — Architecture
+
+```
+iPhone Agnes (PWA standalone)
+   |
+   | 1. subscribeToPush() → PushManager.subscribe(VAPID key)
+   |    → POST /subscribe (subscription JSON)
+   v
+Cloudflare Worker (moon-push.mickael-tsakiris.workers.dev)
+   |
+   | KV "PUSH_SUBS" : stocke les subscriptions (endpoint + keys)
+   |
+   | 2. Cron 17h + 18h UTC (couvre CET/CEST)
+   |    → calculateMoon(48.8688, 2.3208) — Astronomy Engine
+   |    → fetchWeather() — Open-Meteo
+   |    → checkVisibility() :
+   |       - altitude > 5° ?
+   |       - couverture nuageuse < 70% ?
+   |       - illumination > 5% ?
+   |       - precipitations < 1mm/h ?
+   |    → Si visible : generateMessage() + sendPush()
+   v
+Apple Push Service (web.push.apple.com)
+   → Notification sur iPhone Agnes
+```
+
+### Message push — contextualisation
+
+Le message est formule comme si on parle a Agnes a la porte du 33 :
+- Direction relative : droite/gauche par rapport a la sortie (face est)
+- Hauteur : "bien en hauteur", "a mi-hauteur", "assez bas"
+- Repere visible : "vers la Concorde", "en remontant vers le Fg St-Honore"
+- Warning immeubles si altitude < 10°
+
+Exemple : "Agnes ! En sortant du Retiro, regarde bien en hauteur sur ta droite, en descendant la rue, vers la Concorde. Premier croissant, peu nuageux."
+
+### Raccourci iOS (geofencing)
+
+En complement du push cron : automatisation iOS native.
+- App Raccourcis > Automatisation > Quitter [33 rue Boissy d'Anglas]
+- Action : ouvrir Moon Tracker (raccourci ecran d'accueil)
+- Se declenche a toute heure, quand Agnes quitte physiquement le perimetre
+- Zero impact batterie cote app (geofencing par iOS)
 
 ## APIs externes
 
@@ -57,6 +117,9 @@ moon-tracker-agnes/
 | Open-Meteo | Meteo temps reel (WMO code, nuages, precipitation) | api.open-meteo.com/v1/forecast |
 | Nominatim | Reverse geocoding (quartier, ville) | nominatim.openstreetmap.org/reverse |
 | Overpass | Landmarks physiques (rues, commerces, POI) | overpass-api.de/api/interpreter |
+| Cloudflare Workers | Push notifications backend | moon-push.mickael-tsakiris.workers.dev |
+| Cloudflare KV | Stockage subscriptions push | namespace 47a3ae3a17ff47598e44be69b72239af |
+| Apple Push Service | Delivery notifications iOS | web.push.apple.com |
 
 ## Rendu lune — pipeline canvas
 
@@ -85,6 +148,9 @@ L'interpolation entre jour/nuit est pilotee par l'altitude du soleil :
 - -12° < sunAlt < -6° → lerp nuit → nautical
 - sunAlt < -12° → preset nuit
 
+Transition continue, pas de tranches horaires. La saison est automatiquement
+prise en compte car le calcul utilise Astronomy.Horizon('Sun') reel.
+
 ## Effets meteo — particules canvas
 
 Le canvas meteo est en `position: fixed; z-index: 9999` HORS de #sky-bg
@@ -93,6 +159,14 @@ Le canvas meteo est en `position: fixed; z-index: 9999` HORS de #sky-bg
 - Neige : 3 intensites (legere 50p, moderee 100p, forte 180p)
 - Grele : 2 intensites (legere 30p, forte 60p)
 
+## AR Camera — fleches directionnelles
+
+Quand la lune est hors ecran, une fleche double chevron doree (32px)
+avec glow et pulse subtil pointe vers la direction de la lune.
+- Angle : `atan2(moonY - center, moonX - center)`, rotation `angle - PI/2`
+- Positionnee le long du vecteur de direction depuis le centre
+- Label "LUNE" sous la fleche
+
 ## Contraintes iOS Safari
 
 - `canvas.filter = 'blur()'` est accepte silencieusement mais NE FAIT RIEN
@@ -100,6 +174,11 @@ Le canvas meteo est en `position: fixed; z-index: 9999` HORS de #sky-bg
 - DeviceOrientationEvent.requestPermission() requis pour la boussole/AR
 - getUserMedia necessite HTTPS (tunnel cloudflared pour dev)
 - Service worker : bumper CACHE_NAME a chaque deploy pour forcer le refresh
+- **Push** : PushManager disponible UNIQUEMENT en mode standalone (ecran d'accueil)
+- **Push** : Notification.requestPermission() DOIT etre dans un handler de click
+- **Push** : SW register() DOIT etre dans DOMContentLoaded AVANT tout usage push
+- **Push** : VAPID key → utiliser urlBase64ToUint8Array(), jamais atob() direct
+- **Cache standalone** : tres collant. Purger via Reglages > Safari > Donnees de sites
 
 ## Conventions
 
@@ -107,4 +186,5 @@ Le canvas meteo est en `position: fixed; z-index: 9999` HORS de #sky-bg
 - Sections app.js : headers `// ==== SECTION NAME ====`
 - State global : objet `state` (position, lune, meteo, landmarks, UI)
 - Selecteur DOM : `$(id)` alias de `document.getElementById`
+- Nav bar : --nav-h: 76px, box-sizing: border-box, padding safe-area
 - Pas de framework, pas de bundler, pas de transpileur
