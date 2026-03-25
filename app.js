@@ -2051,7 +2051,25 @@ async function subscribeToPush() {
   if (permission !== 'granted') throw new Error('Permission: ' + permission);
 
   status('Attente du Service Worker...');
-  const reg = await navigator.serviceWorker.ready;
+  // Force re-register SW if needed, with timeout
+  let reg;
+  try {
+    reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SW ready timeout')), 5000))
+    ]);
+  } catch (_) {
+    status('Re-enregistrement du Service Worker...');
+    reg = await navigator.serviceWorker.register('./sw.js');
+    // Wait for it to activate
+    await new Promise(resolve => {
+      if (reg.active) return resolve();
+      const sw = reg.installing || reg.waiting;
+      if (sw) sw.addEventListener('statechange', () => { if (sw.state === 'activated') resolve(); });
+      setTimeout(resolve, 3000); // fallback
+    });
+    reg = await navigator.serviceWorker.ready;
+  }
 
   status('Vérification abonnement existant...');
   let subscription = await reg.pushManager.getSubscription();
