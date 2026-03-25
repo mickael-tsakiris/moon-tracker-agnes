@@ -1340,40 +1340,138 @@ function updateSky() {
   // Stars hidden by clouds/weather
   starOpacity = starOpacity * Math.max(0, 1 - cloudFactor * 0.9);
 
-  // Apply 5-stop gradient
-  el.style.setProperty('--sky-top', colors.top);
-  el.style.setProperty('--sky-upper', colors.upper);
-  el.style.setProperty('--sky-mid', colors.mid);
-  el.style.setProperty('--sky-lower', colors.lower);
-  el.style.setProperty('--sky-bottom', colors.bottom);
+  // Apply gradient directly (CSS custom properties don't trigger gradient repaint in all browsers)
+  el.style.background = `linear-gradient(to bottom, ${colors.top} 0%, ${colors.upper} 25%, ${colors.mid} 50%, ${colors.lower} 75%, ${colors.bottom} 100%)`;
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
 }
 
-// Weather effects: rain based on real data
-function updateWeatherEffects() {
-  const el = $('sky-bg');
-  if (!el) return;
-  const precip = state.precipitation || 0;
-  const cloud = state.cloudCover ?? 20;
+// Weather particles — canvas-based rain, snow, hail
+const _weather = { particles: [], effect: 'none', intensity: 'light', animFrame: null };
 
-  // Rain layer
-  let rainEl = document.getElementById('rain-layer');
-  if (precip > 0.1) {
-    if (!rainEl) {
-      rainEl = document.createElement('div');
-      rainEl.id = 'rain-layer';
-      rainEl.className = 'rain-layer';
-      el.appendChild(rainEl);
-    }
-    // Intensity: light (< 1mm), moderate (1-4mm), heavy (4+mm)
-    const intensity = precip < 1 ? 'light' : precip < 4 ? 'moderate' : 'heavy';
-    rainEl.className = `rain-layer rain-${intensity}`;
-    rainEl.style.opacity = '1';
-  } else if (rainEl) {
-    rainEl.style.opacity = '0';
+function updateWeatherEffects() {
+  const wc = state.weatherCode ?? 0;
+  let effect = 'none', intensity = 'light';
+
+  if (wc >= 96) { effect = 'hail'; intensity = wc === 99 ? 'heavy' : 'light'; }
+  else if (wc >= 95) { effect = 'rain'; intensity = 'heavy'; }
+  else if (wc >= 85 || (wc >= 71 && wc <= 77)) {
+    effect = 'snow';
+    intensity = (wc === 71 || wc === 85) ? 'light' : (wc === 73) ? 'moderate' : 'heavy';
+  } else if ((wc >= 61 && wc <= 67) || (wc >= 80 && wc <= 82)) {
+    effect = 'rain';
+    intensity = (wc === 61 || wc === 66 || wc === 80) ? 'light' : (wc === 63 || wc === 81) ? 'moderate' : 'heavy';
+  } else if (wc >= 51 && wc <= 57) {
+    effect = 'rain'; intensity = 'drizzle';
   }
 
-  // Cloud opacity already set by updateSky — don't override here
+  if (effect !== _weather.effect || intensity !== _weather.intensity) {
+    _weather.effect = effect;
+    _weather.intensity = intensity;
+    _weather.particles = [];
+    _initWeatherParticles();
+  }
+
+  if (effect !== 'none' && !_weather.animFrame) _weatherLoop();
+}
+
+function _initWeatherParticles() {
+  const w = window.innerWidth, h = window.innerHeight;
+  const { effect, intensity } = _weather;
+  if (effect === 'none') return;
+
+  // Particle count based on effect + intensity
+  const counts = {
+    rain:  { drizzle: 40, light: 80, moderate: 150, heavy: 250 },
+    snow:  { light: 50, moderate: 100, heavy: 180 },
+    hail:  { light: 30, heavy: 60 }
+  };
+  const n = counts[effect]?.[intensity] ?? 80;
+
+  for (let i = 0; i < n; i++) {
+    const p = { x: Math.random() * w, y: Math.random() * h };
+    if (effect === 'rain') {
+      p.speed = intensity === 'drizzle' ? 4 + Math.random() * 3
+              : intensity === 'heavy' ? 14 + Math.random() * 6
+              : 8 + Math.random() * 5;
+      p.len = intensity === 'drizzle' ? 8 + Math.random() * 6
+            : intensity === 'heavy' ? 18 + Math.random() * 10
+            : 12 + Math.random() * 8;
+      p.opacity = 0.15 + Math.random() * 0.25;
+      p.wind = 0.5 + Math.random() * 1.5; // slight wind drift
+    } else if (effect === 'snow') {
+      p.speed = 0.5 + Math.random() * 1.5;
+      p.size = 1.5 + Math.random() * 2.5;
+      p.opacity = 0.4 + Math.random() * 0.4;
+      p.wobble = Math.random() * Math.PI * 2; // oscillation phase
+      p.wobbleSpeed = 0.02 + Math.random() * 0.03;
+      p.wobbleAmp = 0.3 + Math.random() * 0.7;
+    } else if (effect === 'hail') {
+      p.speed = 10 + Math.random() * 8;
+      p.size = 2 + Math.random() * 2;
+      p.opacity = 0.5 + Math.random() * 0.3;
+      p.wind = 1 + Math.random() * 2;
+    }
+    _weather.particles.push(p);
+  }
+}
+
+function _weatherLoop() {
+  if (_weather.effect === 'none') { _weather.animFrame = null; return; }
+  const canvas = $('weather-canvas');
+  if (!canvas) { _weather.animFrame = null; return; }
+
+  const w = window.innerWidth, h = window.innerHeight;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const { effect, particles } = _weather;
+
+  particles.forEach(p => {
+    if (effect === 'rain') {
+      // Vertical line falling down with slight wind angle
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + p.wind, p.y + p.len);
+      ctx.strokeStyle = `rgba(180,200,220,${p.opacity})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      p.y += p.speed;
+      p.x += p.wind * 0.3;
+      if (p.y > h) { p.y = -p.len; p.x = Math.random() * w; }
+    } else if (effect === 'snow') {
+      // Dot that drifts down + oscillates horizontally
+      p.wobble += p.wobbleSpeed;
+      ctx.beginPath();
+      ctx.arc(p.x + Math.sin(p.wobble) * p.wobbleAmp * 20, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${p.opacity})`;
+      ctx.fill();
+      p.y += p.speed;
+      p.x += Math.sin(p.wobble) * p.wobbleAmp * 0.5;
+      if (p.y > h + p.size) { p.y = -p.size; p.x = Math.random() * w; }
+    } else if (effect === 'hail') {
+      // Small hard dot falling fast with wind
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200,215,230,${p.opacity})`;
+      ctx.fill();
+      // Short streak
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - p.size);
+      ctx.lineTo(p.x + p.wind * 0.5, p.y - p.size - 5);
+      ctx.strokeStyle = `rgba(200,215,230,${p.opacity * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      p.y += p.speed;
+      p.x += p.wind * 0.4;
+      if (p.y > h) { p.y = -10; p.x = Math.random() * w; }
+    }
+  });
+
+  _weather.animFrame = requestAnimationFrame(_weatherLoop);
 }
 
 // Compat shim — old code may call drawSkyBackground
