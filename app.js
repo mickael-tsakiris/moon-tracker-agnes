@@ -752,11 +752,13 @@ function renderMoonPhase() {
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
 
+  // Atmospheric softening: blur the photo slightly (naked eye = soft craters, not sharp)
+  try { ctx.filter = 'blur(1.2px)'; } catch (e) {}
+
   if (_moonImgLoaded && _moonImg) {
     const imgSize = Math.min(_moonImg.naturalWidth, _moonImg.naturalHeight);
     const sx = (_moonImg.naturalWidth - imgSize) / 2;
     const sy = (_moonImg.naturalHeight - imgSize) / 2;
-    // Draw slightly larger than clip to avoid edge fringe from image background
     ctx.drawImage(_moonImg, sx, sy, imgSize, imgSize, cx - r - 2, cy - r - 2, (r + 2) * 2, (r + 2) * 2);
   } else {
     const fb = ctx.createRadialGradient(cx - r * 0.15, cy - r * 0.15, 0, cx, cy, r);
@@ -765,7 +767,27 @@ function renderMoonPhase() {
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Limb darkening on lit portions
+  ctx.filter = 'none';
+
+  // Time-of-day color tint: golden at night, pale/white during day
+  const h = new Date().getHours();
+  const isNight = h >= 20 || h < 6;
+  const isDusk = (h >= 18 && h < 20) || (h >= 6 && h < 8);
+  if (isNight) {
+    // Warm golden-silver tint (moonlight as seen by eye)
+    ctx.fillStyle = 'rgba(220,200,150,0.12)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  } else if (isDusk) {
+    // Slight warm tint
+    ctx.fillStyle = 'rgba(210,190,140,0.07)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // Daytime: slightly desaturated, paler
+    ctx.fillStyle = 'rgba(200,210,230,0.08)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Limb darkening
   const limb = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
   limb.addColorStop(0, 'rgba(0,0,0,0)');
   limb.addColorStop(0.85, 'rgba(0,0,0,0)');
