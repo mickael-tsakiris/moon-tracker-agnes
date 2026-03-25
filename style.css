@@ -180,58 +180,115 @@ body {
   100% { opacity: var(--star-opacity, 1); }
 }
 
-/* Cloud layers — dark masses when overcast, white wisps when clear */
+/* Cloud layers — visible drifting masses */
 .sky-cloud {
   position: absolute;
-  border-radius: 50%;
-  opacity: var(--cloud-opacity, 0);
   pointer-events: none;
   z-index: 3;
   will-change: transform;
+  opacity: var(--cloud-opacity, 0);
   transition: opacity 8s ease;
-  /* Color adapts: dark grey on overcast (via --cloud-color), white on clear */
-  background: radial-gradient(ellipse at var(--cx, 45%) var(--cy, 50%),
-    var(--cloud-color, rgba(180,185,195,0.5)) 0%,
-    var(--cloud-color-mid, rgba(180,185,195,0.2)) 35%,
-    transparent 70%
-  );
 }
 
+/* Each cloud = main body + two pseudo-element bumps = organic cloud shape */
 .sky-cloud.c1 {
-  --cx: 40%; --cy: 45%;
-  width: 650px;
-  height: 180px;
-  top: 5%;
-  left: -40%;
-  filter: blur(20px); -webkit-filter: blur(20px);
-  animation: drift-cloud-1 50s linear infinite;
+  width: 300px; height: 80px;
+  top: 10%; left: -300px;
+  border-radius: 40px;
+  background: var(--cloud-color, rgba(160,165,175,0.7));
+  filter: blur(6px); -webkit-filter: blur(6px);
+  animation: drift-cloud-1 45s linear infinite;
 }
+.sky-cloud.c1::before {
+  content: '';
+  position: absolute;
+  width: 140px; height: 100px;
+  top: -40px; left: 60px;
+  border-radius: 50%;
+  background: inherit;
+}
+.sky-cloud.c1::after {
+  content: '';
+  position: absolute;
+  width: 100px; height: 80px;
+  top: -30px; left: 160px;
+  border-radius: 50%;
+  background: inherit;
+}
+
 .sky-cloud.c2 {
-  --cx: 55%; --cy: 50%;
-  width: 550px;
-  height: 150px;
-  top: 22%;
-  left: -35%;
-  filter: blur(25px); -webkit-filter: blur(25px);
-  animation: drift-cloud-2 70s linear infinite;
+  width: 250px; height: 60px;
+  top: 30%; left: -250px;
+  border-radius: 30px;
+  background: var(--cloud-color, rgba(160,165,175,0.6));
+  filter: blur(8px); -webkit-filter: blur(8px);
+  animation: drift-cloud-2 65s linear infinite;
 }
+.sky-cloud.c2::before {
+  content: '';
+  position: absolute;
+  width: 110px; height: 80px;
+  top: -35px; left: 50px;
+  border-radius: 50%;
+  background: inherit;
+}
+.sky-cloud.c2::after {
+  content: '';
+  position: absolute;
+  width: 80px; height: 60px;
+  top: -25px; left: 130px;
+  border-radius: 50%;
+  background: inherit;
+}
+
 .sky-cloud.c3 {
-  --cx: 45%; --cy: 55%;
-  width: 750px;
-  height: 200px;
-  top: 38%;
-  left: -50%;
-  filter: blur(18px); -webkit-filter: blur(18px);
-  animation: drift-cloud-3 40s linear infinite;
+  width: 350px; height: 90px;
+  top: 50%; left: -350px;
+  border-radius: 45px;
+  background: var(--cloud-color, rgba(160,165,175,0.65));
+  filter: blur(5px); -webkit-filter: blur(5px);
+  animation: drift-cloud-3 35s linear infinite;
 }
+.sky-cloud.c3::before {
+  content: '';
+  position: absolute;
+  width: 160px; height: 110px;
+  top: -45px; left: 80px;
+  border-radius: 50%;
+  background: inherit;
+}
+.sky-cloud.c3::after {
+  content: '';
+  position: absolute;
+  width: 120px; height: 90px;
+  top: -35px; left: 190px;
+  border-radius: 50%;
+  background: inherit;
+}
+
 .sky-cloud.c4 {
-  --cx: 50%; --cy: 45%;
-  width: 500px;
-  height: 130px;
-  top: 58%;
-  left: -30%;
-  filter: blur(30px); -webkit-filter: blur(30px);
-  animation: drift-cloud-4 60s linear infinite;
+  width: 200px; height: 50px;
+  top: 72%; left: -200px;
+  border-radius: 25px;
+  background: var(--cloud-color, rgba(160,165,175,0.55));
+  filter: blur(7px); -webkit-filter: blur(7px);
+  animation: drift-cloud-4 55s linear infinite;
+}
+.sky-cloud.c4::before {
+  content: '';
+  position: absolute;
+  width: 90px; height: 65px;
+  top: -30px; left: 40px;
+  border-radius: 50%;
+  background: inherit;
+}
+.sky-cloud.c4::after {
+  content: '';
+  position: absolute;
+  width: 70px; height: 50px;
+  top: -20px; left: 110px;
+  border-radius: 50%;
+  background: inherit;
 }
 
 @keyframes drift-cloud-1 {
