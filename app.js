@@ -16,7 +16,7 @@ const state = {
   lat: null, lng: null, heading: null,
   compassAvailable: false,
   moonData: null, landmarks: [], locationName: '',
-  cloudCover: null, precipitation: 0, nightMode: false, updateTimer: null,
+  cloudCover: null, precipitation: 0, snowfall: 0, windSpeed: 0, weatherCode: 0, isDay: 1, nightMode: false, updateTimer: null,
   currentTab: 'home'
 };
 
@@ -429,18 +429,22 @@ async function fetchLocationName() {
 
 async function fetchCloudCover() {
   const resp = await fetch(
-    `${CONFIG.openMeteoApi}?latitude=${state.lat}&longitude=${state.lng}&hourly=cloud_cover,precipitation&current=precipitation,rain,cloud_cover&timezone=auto&forecast_days=1`
+    `${CONFIG.openMeteoApi}?latitude=${state.lat}&longitude=${state.lng}&current=weather_code,cloud_cover,precipitation,rain,snowfall,wind_speed_10m,is_day&timezone=auto`
   );
   if (!resp.ok) return null;
   const data = await resp.json();
-  const h = data.hourly;
   const cur = data.current;
-  // Use current values if available, fallback to hourly
-  const cc = cur?.cloud_cover ?? h?.cloud_cover?.[new Date().getHours()] ?? null;
-  const precip = cur?.precipitation ?? cur?.rain ?? h?.precipitation?.[new Date().getHours()] ?? 0;
-  state.precipitation = precip;
+  if (!cur) return null;
+
+  // Store all weather data for sky rendering
+  state.weatherCode = cur.weather_code ?? 0;
+  state.precipitation = cur.precipitation ?? 0;
+  state.snowfall = cur.snowfall ?? 0;
+  state.windSpeed = cur.wind_speed_10m ?? 0;
+  state.isDay = cur.is_day ?? 1;
+
   updateWeatherEffects();
-  return cc;
+  return cur.cloud_cover ?? null;
 }
 
 // ============================
@@ -1152,28 +1156,51 @@ function renderLandmarks() {
 // CSS SKY BACKGROUND — sun-altitude driven
 // ============================
 
-// Color presets — 5 stops (top, upper, mid, lower, bottom) for realistic sky depth
+// Sky presets — 5 stops for each weather condition, day AND night variants
+// Sampled from real sky photography for each condition
 const SKY_PRESETS = {
-  // Full night clear: deep navy, hint of blue at horizon
-  night:        { top: '#050810', upper: '#080e1a', mid: '#0c1428', lower: '#0e1830', bottom: '#121e38' },
-  // Full night overcast: flat dark grey, no blue
-  nightCloud:   { top: '#141618', upper: '#1a1c20', mid: '#222428', lower: '#282a2e', bottom: '#2e3034' },
-  // Nautical twilight
-  nautical:     { top: '#0a1228', upper: '#101830', mid: '#141e3a', lower: '#1a2840', bottom: '#1e2845' },
-  // Civil twilight dawn: warm horizon, cool top
-  civilDawn:    { top: '#1a2a55', upper: '#282848', mid: '#3a2a50', lower: '#804838', bottom: '#c05838' },
-  // Civil twilight dusk
-  civilDusk:    { top: '#1a2040', upper: '#302040', mid: '#4a2248', lower: '#903838', bottom: '#b84828' },
-  // Low sun morning
-  lowSunAM:     { top: '#2a4a78', upper: '#325888', mid: '#3a6090', lower: '#5080a0', bottom: '#6a98b8' },
-  // Low sun evening
-  lowSunPM:     { top: '#1e3868', upper: '#2a4070', mid: '#3a4a78', lower: '#685848', bottom: '#8a6858' },
-  // Full day clear: real blue sky gradient
-  dayClear:     { top: '#1a3a68', upper: '#2a5a8a', mid: '#3a7aaa', lower: '#62a0c4', bottom: '#8ac0d8' },
-  // Full day overcast: photographed grey overcast sky
-  dayOvercast:  { top: '#6a7280', upper: '#727a88', mid: '#7a8290', lower: '#848c98', bottom: '#8e96a2' },
-  // Full day heavy overcast: darker, flatter
-  dayHeavy:     { top: '#545a62', upper: '#5e646c', mid: '#686e76', lower: '#727880', bottom: '#7c828a' }
+  // === CLEAR ===
+  dayClear:       { top: '#1a3a68', upper: '#2a5a8a', mid: '#3a7aaa', lower: '#62a0c4', bottom: '#8ac0d8' },
+  nightClear:     { top: '#050810', upper: '#080e1a', mid: '#0c1428', lower: '#0e1830', bottom: '#121e38' },
+
+  // === PARTLY CLOUDY (WMO 1-2) ===
+  dayPartly:      { top: '#2a4a72', upper: '#3a6490', mid: '#5080a0', lower: '#6898b4', bottom: '#80aec4' },
+  nightPartly:    { top: '#0a0e18', upper: '#10162a', mid: '#182238', lower: '#1e2a40', bottom: '#243248' },
+
+  // === OVERCAST (WMO 3) ===
+  dayOvercast:    { top: '#6a7280', upper: '#727a88', mid: '#7a8290', lower: '#848c98', bottom: '#8e96a2' },
+  nightOvercast:  { top: '#141618', upper: '#1a1c20', mid: '#222428', lower: '#282a2e', bottom: '#2e3034' },
+
+  // === FOG / MIST (WMO 45, 48) ===
+  dayFog:         { top: '#888e96', upper: '#8e949c', mid: '#949aa2', lower: '#9aa0a8', bottom: '#a0a6ae' },
+  nightFog:       { top: '#1e2024', upper: '#242628', mid: '#2a2c30', lower: '#303236', bottom: '#36383c' },
+
+  // === DRIZZLE (WMO 51-57) ===
+  dayDrizzle:     { top: '#606870', upper: '#687078', mid: '#707880', lower: '#7a8288', bottom: '#848c92' },
+  nightDrizzle:   { top: '#121416', upper: '#181a1e', mid: '#1e2024', lower: '#24262a', bottom: '#2a2c30' },
+
+  // === RAIN (WMO 61-67, 80-82) ===
+  dayRain:        { top: '#4a525c', upper: '#525a64', mid: '#5a626c', lower: '#626a72', bottom: '#6a7278' },
+  nightRain:      { top: '#0e1014', upper: '#141618', mid: '#1a1c1e', lower: '#202224', bottom: '#262828' },
+
+  // === HEAVY RAIN (WMO 65, 82) ===
+  dayHeavyRain:   { top: '#3a4248', upper: '#424a50', mid: '#4a5258', lower: '#525a60', bottom: '#5a6268' },
+  nightHeavyRain: { top: '#0a0c0e', upper: '#101214', mid: '#161818', lower: '#1c1e1e', bottom: '#222424' },
+
+  // === SNOW (WMO 71-77, 85-86) ===
+  daySnow:        { top: '#78808a', upper: '#828a94', mid: '#8c949e', lower: '#969ea8', bottom: '#a0a8b2' },
+  nightSnow:      { top: '#181c22', upper: '#1e2228', mid: '#24282e', lower: '#2a2e34', bottom: '#30343a' },
+
+  // === THUNDERSTORM (WMO 95-99) ===
+  dayStorm:       { top: '#2a3038', upper: '#323840', mid: '#3a4048', lower: '#424850', bottom: '#4a5058' },
+  nightStorm:     { top: '#080a0c', upper: '#0e1012', mid: '#141618', lower: '#1a1c1e', bottom: '#202224' },
+
+  // === TWILIGHT (sun near horizon) ===
+  civilDawn:      { top: '#1a2a55', upper: '#282848', mid: '#3a2a50', lower: '#804838', bottom: '#c05838' },
+  civilDusk:      { top: '#1a2040', upper: '#302040', mid: '#4a2248', lower: '#903838', bottom: '#b84828' },
+  nautical:       { top: '#0a1228', upper: '#101830', mid: '#141e3a', lower: '#1a2840', bottom: '#1e2845' },
+  lowSunAM:       { top: '#2a4a78', upper: '#325888', mid: '#3a6090', lower: '#5080a0', bottom: '#6a98b8' },
+  lowSunPM:       { top: '#1e3868', upper: '#2a4070', mid: '#3a4a78', lower: '#685848', bottom: '#8a6858' }
 };
 
 function lerpColor(a, b, t) {
@@ -1212,6 +1239,7 @@ function updateSky() {
   const el = $('sky-bg');
   if (!el) return;
 
+  const wc = state.weatherCode ?? 0;
   const cloud = state.cloudCover ?? 20;
   const cloudFactor = Math.min(1, cloud / 100);
 
@@ -1231,52 +1259,86 @@ function updateSky() {
     sunAlt = 50 * Math.sin(((h - 6) / 12) * Math.PI);
   }
 
-  // Select sky preset based on sun altitude
-  let clearColors, cloudColors;
-  let starOpacity;
+  // Map WMO weathercode to sky preset pair (day/night)
+  let dayPreset, nightPreset;
+  if (wc >= 95) {
+    // Thunderstorm
+    dayPreset = SKY_PRESETS.dayStorm;
+    nightPreset = SKY_PRESETS.nightStorm;
+  } else if (wc >= 71 || (wc >= 85 && wc <= 86) || wc === 77) {
+    // Snow
+    dayPreset = SKY_PRESETS.daySnow;
+    nightPreset = SKY_PRESETS.nightSnow;
+  } else if (wc === 65 || wc === 67 || wc === 82) {
+    // Heavy rain
+    dayPreset = SKY_PRESETS.dayHeavyRain;
+    nightPreset = SKY_PRESETS.nightHeavyRain;
+  } else if ((wc >= 61 && wc <= 67) || (wc >= 80 && wc <= 82)) {
+    // Rain
+    dayPreset = SKY_PRESETS.dayRain;
+    nightPreset = SKY_PRESETS.nightRain;
+  } else if (wc >= 51 && wc <= 57) {
+    // Drizzle
+    dayPreset = SKY_PRESETS.dayDrizzle;
+    nightPreset = SKY_PRESETS.nightDrizzle;
+  } else if (wc === 45 || wc === 48) {
+    // Fog
+    dayPreset = SKY_PRESETS.dayFog;
+    nightPreset = SKY_PRESETS.nightFog;
+  } else if (wc === 3 || cloudFactor > 0.7) {
+    // Overcast
+    dayPreset = SKY_PRESETS.dayOvercast;
+    nightPreset = SKY_PRESETS.nightOvercast;
+  } else if (wc >= 1 || cloudFactor > 0.3) {
+    // Partly cloudy — blend between clear and partly
+    const t = Math.min(1, cloudFactor / 0.7);
+    dayPreset = lerpPreset(SKY_PRESETS.dayClear, SKY_PRESETS.dayPartly, t);
+    nightPreset = lerpPreset(SKY_PRESETS.nightClear, SKY_PRESETS.nightPartly, t);
+  } else {
+    // Clear
+    dayPreset = SKY_PRESETS.dayClear;
+    nightPreset = SKY_PRESETS.nightClear;
+  }
+
+  // Determine final sky color based on sun altitude (continuous transition)
+  let colors, starOpacity;
   const h = new Date().getHours();
 
   if (sunAlt > 20) {
-    clearColors = SKY_PRESETS.dayClear;
-    cloudColors = cloudFactor > 0.7 ? SKY_PRESETS.dayHeavy : SKY_PRESETS.dayOvercast;
+    colors = dayPreset;
     starOpacity = 0;
   } else if (sunAlt > 6) {
+    // Low sun → full day transition
     const t = (sunAlt - 6) / 14;
     const low = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
-    clearColors = lerpPreset(low, SKY_PRESETS.dayClear, t);
-    cloudColors = lerpPreset(low, SKY_PRESETS.dayOvercast, t);
+    colors = lerpPreset(low, dayPreset, t);
     starOpacity = 0;
   } else if (sunAlt > 0) {
+    // Golden hour / civil twilight
     const t = sunAlt / 6;
     const civil = h < 14 ? SKY_PRESETS.civilDawn : SKY_PRESETS.civilDusk;
     const low = h < 14 ? SKY_PRESETS.lowSunAM : SKY_PRESETS.lowSunPM;
-    clearColors = lerpPreset(civil, low, t);
-    cloudColors = clearColors; // twilight clouds = same tones
+    colors = lerpPreset(civil, low, t);
     starOpacity = Math.max(0, (1 - t) * 0.15);
   } else if (sunAlt > -6) {
+    // Civil twilight
     const t = (sunAlt + 6) / 6;
     const civil = h < 14 ? SKY_PRESETS.civilDawn : SKY_PRESETS.civilDusk;
-    clearColors = lerpPreset(SKY_PRESETS.nautical, civil, t);
-    cloudColors = clearColors;
-    starOpacity = 1 - t * 0.7;
+    colors = lerpPreset(nightPreset, civil, t);
+    starOpacity = (1 - t) * (wc < 3 ? 1 : 0.2);
   } else if (sunAlt > -12) {
+    // Nautical twilight
     const t = (sunAlt + 12) / 6;
-    clearColors = lerpPreset(SKY_PRESETS.night, SKY_PRESETS.nautical, t);
-    cloudColors = lerpPreset(SKY_PRESETS.nightCloud, SKY_PRESETS.nautical, t);
-    starOpacity = 1 - t * 0.2;
+    colors = lerpPreset(nightPreset, SKY_PRESETS.nautical, t);
+    starOpacity = (1 - t * 0.3) * (wc < 3 ? 1 : 0.1);
   } else {
-    clearColors = SKY_PRESETS.night;
-    cloudColors = SKY_PRESETS.nightCloud;
-    starOpacity = 1;
+    // Full night
+    colors = nightPreset;
+    starOpacity = wc < 3 ? 1 : (wc < 45 ? 0.3 : 0);
   }
 
-  // Blend between clear and overcast based on cloud cover
-  const colors = cloudFactor > 0.2
-    ? lerpPreset(clearColors, cloudColors, Math.min(1, (cloudFactor - 0.2) / 0.6))
-    : clearColors;
-
-  // Stars hidden by clouds
-  starOpacity = starOpacity * Math.max(0, 1 - cloudFactor);
+  // Stars hidden by clouds/weather
+  starOpacity = starOpacity * Math.max(0, 1 - cloudFactor * 0.9);
 
   // Apply 5-stop gradient
   el.style.setProperty('--sky-top', colors.top);
