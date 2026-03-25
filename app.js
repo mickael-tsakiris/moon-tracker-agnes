@@ -27,6 +27,11 @@ const sky = {}; // kept for compat — CSS sky now handles rendering
 // INIT
 // ============================
 document.addEventListener('DOMContentLoaded', () => {
+  // Register service worker FIRST
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW register:', e));
+  }
+
   // Start CSS sky
   try { updateSky(); setInterval(updateSky, 60000); } catch (e) { console.error('Sky init error:', e); }
 
@@ -2051,25 +2056,10 @@ async function subscribeToPush() {
   if (permission !== 'granted') throw new Error('Permission: ' + permission);
 
   status('Attente du Service Worker...');
-  // Force re-register SW if needed, with timeout
-  let reg;
-  try {
-    reg = await Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('SW ready timeout')), 5000))
-    ]);
-  } catch (_) {
-    status('Re-enregistrement du Service Worker...');
-    reg = await navigator.serviceWorker.register('./sw.js');
-    // Wait for it to activate
-    await new Promise(resolve => {
-      if (reg.active) return resolve();
-      const sw = reg.installing || reg.waiting;
-      if (sw) sw.addEventListener('statechange', () => { if (sw.state === 'activated') resolve(); });
-      setTimeout(resolve, 3000); // fallback
-    });
-    reg = await navigator.serviceWorker.ready;
-  }
+  const reg = await Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker non prêt après 8s — recharge l\'app')), 8000))
+  ]);
 
   status('Vérification abonnement existant...');
   let subscription = await reg.pushManager.getSubscription();
