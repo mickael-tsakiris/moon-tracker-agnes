@@ -1828,33 +1828,58 @@ function renderAROverlay() {
     $('ar-status').textContent = 'La Lune est là !';
     $('ar-description').textContent = `${getPhaseName(m.phaseAngle)} — ${Math.round(m.fraction * 100)}% illuminée`;
   } else {
-    // Moon is off-screen — draw arrow pointing to it
-    const arrowSize = 20;
-    const margin = 40;
+    // Moon is off-screen — draw prominent arrow pointing to it
+    const arrowSize = 36;
+    const margin = 80;
 
-    // Direction arrow
+    // Direction angle from screen center to moon
     const angle = Math.atan2(
       -(moonY - h / 2),
       moonX - w / 2
     );
 
-    // Clamp arrow to screen edge
-    const edgeX = Math.max(margin, Math.min(w - margin, moonX));
-    const edgeY = Math.max(margin, Math.min(h - margin, moonY));
-    const ax = moonX < 0 ? margin : moonX > w ? w - margin : edgeX;
-    const ay = moonY < 0 ? margin : moonY > h ? h - margin : edgeY;
+    // Position arrow along the direction vector, inset from edge
+    const cx = w / 2, cy = h / 2;
+    const maxDist = Math.min(w, h) / 2 - margin;
+    const dx = Math.cos(-angle + Math.PI), dy = Math.sin(-angle + Math.PI);
+    const ax = cx + dx * maxDist;
+    const ay = cy + dy * maxDist;
 
-    // Arrow
+    // Glow behind arrow
     ctx.save();
     ctx.translate(ax, ay);
     ctx.rotate(-angle + Math.PI);
+    ctx.shadowColor = 'rgba(201,168,124,0.6)';
+    ctx.shadowBlur = 20;
+
+    // Outer chevron (larger, semi-transparent)
+    ctx.beginPath();
+    ctx.moveTo(0, -arrowSize * 1.3);
+    ctx.lineTo(arrowSize * 0.8, arrowSize * 0.4);
+    ctx.lineTo(0, arrowSize * 0.05);
+    ctx.lineTo(-arrowSize * 0.8, arrowSize * 0.4);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(201,168,124,0.3)';
+    ctx.fill();
+
+    // Inner chevron (solid)
     ctx.beginPath();
     ctx.moveTo(0, -arrowSize);
-    ctx.lineTo(arrowSize * 0.6, arrowSize * 0.5);
-    ctx.lineTo(-arrowSize * 0.6, arrowSize * 0.5);
+    ctx.lineTo(arrowSize * 0.55, arrowSize * 0.35);
+    ctx.lineTo(0, arrowSize * 0.05);
+    ctx.lineTo(-arrowSize * 0.55, arrowSize * 0.35);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(201,168,124,0.8)';
+    ctx.fillStyle = 'rgba(201,168,124,0.9)';
     ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Small "LUNE" label below arrow
+    ctx.font = 'bold 11px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(201,168,124,0.8)';
+    ctx.textAlign = 'center';
+    ctx.fillText('LUNE', 0, arrowSize * 0.9);
+
     ctx.restore();
 
     // Direction hint — combine horizontal and vertical
