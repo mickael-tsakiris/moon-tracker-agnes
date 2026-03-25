@@ -436,12 +436,13 @@ async function fetchCloudCover() {
   const cur = data.current;
   if (!cur) return null;
 
-  // Store all weather data for sky rendering
+  // Store weather data — weatherCode drives sky preset + description text
   state.weatherCode = cur.weather_code ?? 0;
-  state.precipitation = cur.precipitation ?? 0;
-  state.snowfall = cur.snowfall ?? 0;
-  state.windSpeed = cur.wind_speed_10m ?? 0;
-  state.isDay = cur.is_day ?? 1;
+  // Available for future particle intensity tuning:
+  state.precipitation = cur.precipitation ?? 0;   // mm/h
+  state.snowfall = cur.snowfall ?? 0;              // cm/h
+  state.windSpeed = cur.wind_speed_10m ?? 0;       // km/h
+  state.isDay = cur.is_day ?? 1;                   // 0=night, 1=day
 
   updateWeatherEffects();
   return cur.cloud_cover ?? null;
@@ -741,7 +742,6 @@ function setupCompassButton() {
 }
 
 function startCompass() {
-  state.compassAvailable = true;
   $('compass-hint').textContent = 'Oriente ton téléphone pour suivre la Lune';
   window.addEventListener('deviceorientation', e => {
     let h = e.webkitCompassHeading !== undefined ? e.webkitCompassHeading
@@ -1023,8 +1023,6 @@ function renderMoonPhase() {
   ctx.drawImage(off, 0, 0, size * dpr, size * dpr, 0, 0, size, size);
 }
 
-// Old texture functions removed — using NASA photo + canvas phase mask
-function _buildMoonTexture_LEGACY() { /* removed — 240 lines of dead code cleaned up */ }
 
 function renderCompass() {
   const canvas = $('compass-canvas');
@@ -1213,15 +1211,10 @@ function renderLandmarks() {
 }
 
 // ============================
-// ANIMATED SKY BACKGROUND
+// SKY BACKGROUND — CSS driven, sun-altitude + weather
+// Sky presets (5 gradient stops each) for every WMO weather condition,
+// day AND night variants. Colors sampled from real sky photography.
 // ============================
-
-// ============================
-// CSS SKY BACKGROUND — sun-altitude driven
-// ============================
-
-// Sky presets — 5 stops for each weather condition, day AND night variants
-// Sampled from real sky photography for each condition
 const SKY_PRESETS = {
   // === CLEAR ===
   dayClear:       { top: '#1a3a68', upper: '#2a5a8a', mid: '#3a7aaa', lower: '#62a0c4', bottom: '#8ac0d8' },
@@ -1409,7 +1402,10 @@ function updateSky() {
   el.style.setProperty('--star-opacity', starOpacity.toFixed(3));
 }
 
-// Weather particles — canvas-based rain, snow, hail
+// ============================
+// WEATHER EFFECTS — canvas-based rain, snow, hail particles
+// Driven by WMO weather_code from Open-Meteo API
+// ============================
 const _weather = { particles: [], effect: 'none', intensity: 'light', animFrame: null };
 
 function updateWeatherEffects() {
@@ -1538,14 +1534,16 @@ function _weatherLoop() {
   _weather.animFrame = requestAnimationFrame(_weatherLoop);
 }
 
-// Compat shim — old code may call drawSkyBackground
+// Compat shim — drawSkyBackground alias used in startApp()
 function drawSkyBackground() { updateSky(); }
-function initSkyBackground() { updateSky(); }
 
 // ============================
 // NAVIGATION
 // ============================
 function switchTab(tabId) {
+  // Stop AR camera when leaving camera tab
+  if (state.currentTab === 'camera' && tabId !== 'camera' && typeof stopAR === 'function') stopAR();
+
   state.currentTab = tabId;
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -1886,14 +1884,6 @@ function stopAR() {
   if (ar.animFrame) cancelAnimationFrame(ar.animFrame);
   window.removeEventListener('deviceorientation', onAROrientation, true);
 }
-
-// Init AR when tab switches
-const origSwitchTab = switchTab;
-switchTab = function(tabId) {
-  // Stop AR when leaving camera tab
-  if (state.currentTab === 'camera' && tabId !== 'camera') stopAR();
-  origSwitchTab(tabId);
-};
 
 // Init AR button listener on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', initAR);
