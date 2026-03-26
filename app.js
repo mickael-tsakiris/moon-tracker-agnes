@@ -1775,6 +1775,37 @@ function renderAROverlay() {
     return;
   }
 
+  // --- Moon below horizon: show info screen, no tracking ---
+  if (!m.isAboveHorizon) {
+    // Draw dimmed overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, w, h);
+
+    // Moon icon
+    ctx.font = '48px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(201,168,124,0.6)';
+    ctx.fillText('\u263D', w / 2, h / 2 - 40);
+
+    // Main message
+    ctx.font = 'bold 18px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText('La Lune est sous l\u2019horizon', w / 2, h / 2 + 10);
+
+    // Rise time
+    ctx.font = '14px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    if (m.rise) {
+      ctx.fillText(`Prochain lever : ${formatTime(m.rise)}`, w / 2, h / 2 + 38);
+    } else {
+      ctx.fillText('Prochain lever : demain', w / 2, h / 2 + 38);
+    }
+
+    $('ar-status').textContent = 'La Lune est sous l\u2019horizon';
+    $('ar-description').textContent = m.rise ? `Prochain lever \u00e0 ${formatTime(m.rise)}` : 'Prochain lever demain';
+    return;
+  }
+
   // --- Horizontal: difference between phone heading and moon azimuth ---
   let azDiff = m.azimuth - ar.heading;
   while (azDiff > 180) azDiff -= 360;
@@ -1911,9 +1942,7 @@ function renderAROverlay() {
       hints.push(`Baisse le téléphone (${Math.round(Math.abs(altDiff))}° plus bas)`);
     }
 
-    if (!m.isAboveHorizon) {
-      hints = ['La Lune est sous l\'horizon'];
-    } else if (hints.length === 0) {
+    if (hints.length === 0) {
       hints.push('Presque... encore un peu');
     }
 
