@@ -1775,37 +1775,6 @@ function renderAROverlay() {
     return;
   }
 
-  // --- Moon below horizon: show info screen, no tracking ---
-  if (!m.isAboveHorizon) {
-    // Draw dimmed overlay
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(0, 0, w, h);
-
-    // Moon icon
-    ctx.font = '48px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(201,168,124,0.6)';
-    ctx.fillText('\u263D', w / 2, h / 2 - 40);
-
-    // Main message
-    ctx.font = 'bold 18px -apple-system, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillText('La Lune est sous l\u2019horizon', w / 2, h / 2 + 10);
-
-    // Rise time
-    ctx.font = '14px -apple-system, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    if (m.rise) {
-      ctx.fillText(`Prochain lever : ${formatTime(m.rise)}`, w / 2, h / 2 + 38);
-    } else {
-      ctx.fillText('Prochain lever : demain', w / 2, h / 2 + 38);
-    }
-
-    $('ar-status').textContent = 'La Lune est sous l\u2019horizon';
-    $('ar-description').textContent = m.rise ? `Prochain lever \u00e0 ${formatTime(m.rise)}` : 'Prochain lever demain';
-    return;
-  }
-
   // --- Horizontal: difference between phone heading and moon azimuth ---
   let azDiff = m.azimuth - ar.heading;
   while (azDiff > 180) azDiff -= 360;
@@ -1820,28 +1789,56 @@ function renderAROverlay() {
   const moonX = w / 2 + (azDiff / ar.FOV_H) * w;
   const moonY = h / 2 - (altDiff / ar.FOV_V) * h;
 
+  // --- Draw horizon line ---
+  // Horizon = 0° altitude, so its Y position depends on phone pitch
+  const horizonY = h / 2 + (ar.pitch / ar.FOV_V) * h;
+  if (horizonY > 0 && horizonY < h) {
+    ctx.save();
+    ctx.setLineDash([12, 8]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, horizonY);
+    ctx.lineTo(w, horizonY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Horizon label
+    ctx.font = '600 10px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.textAlign = 'left';
+    ctx.fillText('HORIZON', 12, horizonY - 6);
+    ctx.restore();
+  }
+
   // Check if moon is on screen
   const onScreen = moonX > -50 && moonX < w + 50 && moonY > -50 && moonY < h + 50;
 
-  if (onScreen && m.isAboveHorizon) {
-    // Draw moon indicator
+  const belowHorizon = !m.isAboveHorizon;
+
+  if (onScreen) {
+    // Draw moon indicator (ghost style if below horizon)
     const moonR = 28;
+    const alpha = belowHorizon ? 0.35 : 1;
 
     // Glow
+    ctx.globalAlpha = alpha;
     const glow = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 3);
-    glow.addColorStop(0, 'rgba(201,168,124,0.3)');
+    glow.addColorStop(0, belowHorizon ? 'rgba(201,168,124,0.15)' : 'rgba(201,168,124,0.3)');
     glow.addColorStop(1, 'rgba(201,168,124,0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Ring
+    // Ring (dashed if below horizon)
     ctx.beginPath();
+    if (belowHorizon) ctx.setLineDash([6, 4]);
     ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(201,168,124,0.8)';
+    ctx.strokeStyle = belowHorizon ? 'rgba(201,168,124,0.4)' : 'rgba(201,168,124,0.8)';
     ctx.lineWidth = 2;
     ctx.stroke();
+    if (belowHorizon) ctx.setLineDash([]);
 
     // Inner dot
     ctx.beginPath();
@@ -1858,11 +1855,21 @@ function renderAROverlay() {
     ctx.fillText('Lune', moonX, moonY - moonR - 12);
     ctx.font = '400 11px system-ui';
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(`${Math.round(m.altitude)}° au-dessus de l'horizon`, moonX, moonY + moonR + 18);
+    if (belowHorizon) {
+      ctx.fillText(`${Math.round(Math.abs(m.altitude))}° sous l'horizon`, moonX, moonY + moonR + 18);
+    } else {
+      ctx.fillText(`${Math.round(m.altitude)}° au-dessus de l'horizon`, moonX, moonY + moonR + 18);
+    }
     ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
 
-    $('ar-status').textContent = 'La Lune est là !';
-    $('ar-description').textContent = `${getPhaseName(m.phaseAngle)} — ${Math.round(m.fraction * 100)}% illuminée`;
+    if (belowHorizon) {
+      $('ar-status').textContent = 'Sous l\u2019horizon';
+      $('ar-description').textContent = m.rise ? `Lever \u00e0 ${formatTime(m.rise)}` : 'Lever demain';
+    } else {
+      $('ar-status').textContent = 'La Lune est l\u00e0 !';
+      $('ar-description').textContent = `${getPhaseName(m.phaseAngle)} \u2014 ${Math.round(m.fraction * 100)}% illumin\u00e9e`;
+    }
   } else {
     // Moon is off-screen — draw arrow pointing TOWARD the moon
     const arrowSize = 32;
@@ -1946,9 +1953,14 @@ function renderAROverlay() {
       hints.push('Presque... encore un peu');
     }
 
-    $('ar-status').textContent = hints[0];
-    const extra = hints.length > 1 ? hints.slice(1).join(' — ') : `Lune : ${azToCardinal(m.azimuth)}, ${Math.round(m.altitude)}° d'altitude`;
-    $('ar-description').textContent = extra;
+    if (belowHorizon) {
+      $('ar-status').textContent = `Sous l\u2019horizon \u2014 ${hints[0]}`;
+      $('ar-description').textContent = m.rise ? `Lever \u00e0 ${formatTime(m.rise)}` : 'Lever demain';
+    } else {
+      $('ar-status').textContent = hints[0];
+      const extra = hints.length > 1 ? hints.slice(1).join(' \u2014 ') : `Lune : ${azToCardinal(m.azimuth)}, ${Math.round(m.altitude)}\u00b0 d'altitude`;
+      $('ar-description').textContent = extra;
+    }
   }
 
   // Crosshair center
